@@ -95,9 +95,11 @@ typing                + 15min continuous       → stretching → typing
 ### VS Code (`activityMonitor.ts`)
 
 - `vscode.workspace.onDidChangeTextDocument` → keypress detected, resets idle timer
-- Idle timer chain: 30s → `drinking_coffee`, 2min → `leaning_back`, 5min → `walking`, 10min → `sleeping`
+- Idle timer chain: 30s → `drinking_coffee`, 5min → `walking`, 10min → `sleeping`
+  - `leaning_back` is not timer-driven; it is entered when `drinking_coffee` animation completes
 - Continuous typing tracked with a `setInterval` counter; counter resets on any idle period
 - At 15min of continuous typing, emits `typing:extended` event → triggers `stretching`
+- When `stretching` completes, state returns to `typing` regardless of current keystroke activity; idle timers reset from that moment
 
 ### Claude Code (`claudeWatcher.ts`)
 
