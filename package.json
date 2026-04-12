@@ -3,9 +3,15 @@
   "displayName": "Pixel Agent",
   "description": "A pixel art developer companion that reacts to your coding activity",
   "version": "0.0.1",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["*"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
   "main": "./out/extension.js",
   "contributes": {},
   "scripts": {
@@ -18,7 +24,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
-    "canvas": "^2.11.2",
+    "canvas": "^3.2.3",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
