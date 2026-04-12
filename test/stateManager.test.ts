@@ -119,4 +119,13 @@ describe('StateManager', () => {
     sm.onKeypress();
     expect(onChange).not.toHaveBeenCalled(); // already typing, no change
   });
+
+  it('leaning_back after claude override does not auto-progress to walking', () => {
+    sm.onKeypress();
+    vi.advanceTimersByTime(30_000);
+    sm.onAnimationDone();               // → leaning_back (normal path)
+    sm.onClaudeActive();                // Claude fires during leaning_back (no-op on state but clears timers)
+    vi.advanceTimersByTime(5 * 60_000); // 5min — would trigger walking if long chain were running
+    expect(sm.getCurrent()).toBe('leaning_back');
+  });
 });

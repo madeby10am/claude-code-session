@@ -72,6 +72,7 @@ export class StateManager {
 
   private startLongIdleChain(): void {
     this.longIdleTimer = setTimeout(() => {
+      this.longIdleTimer = null;
       this.transitionTo('walking');
       this.longIdleTimer = setTimeout(() => {
         this.transitionTo('sleeping');
