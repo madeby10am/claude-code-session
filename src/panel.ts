@@ -57,8 +57,7 @@ export class Panel {
   }
 
   dispose(): void {
-    this.panel.dispose();
-    Panel.instance = undefined;
+    this.panel.dispose(); // onDidDispose fires synchronously and clears Panel.instance
   }
 
   private uri(rel: string): string {
