@@ -43,6 +43,7 @@ export class StateManager {
 
   onClaudeActive(): void {
     if (this.current !== 'typing' && this.current !== 'stretching') {
+      this.clearTimers();
       this.transitionTo('leaning_back');
     }
   }

@@ -104,6 +104,16 @@ describe('StateManager', () => {
     expect(sm.getCurrent()).toBe('stretching');
   });
 
+  it('claude active cancels the walking->sleeping timer', () => {
+    sm.onKeypress();
+    vi.advanceTimersByTime(30_000);
+    sm.onAnimationDone();
+    vi.advanceTimersByTime(5 * 60_000);   // → walking
+    sm.onClaudeActive();                   // → leaning_back (override)
+    vi.advanceTimersByTime(10 * 60_000);  // ghost timer should NOT fire
+    expect(sm.getCurrent()).toBe('leaning_back');
+  });
+
   it('does not fire onChange when state is unchanged', () => {
     sm.onKeypress();
     sm.onKeypress();
