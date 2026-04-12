@@ -24,7 +24,8 @@ export class ClaudeWatcher {
   }
 
   dispose(): void {
-    if (this.debounceTimer) clearTimeout(this.debounceTimer);
+    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     this.watcher?.close();
+    this.watcher = null;
   }
 }
