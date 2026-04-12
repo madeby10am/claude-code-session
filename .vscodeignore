@@ -9,3 +9,5 @@ out-scripts/**
 tsconfig*.json
 vitest.config.ts
 .gitignore
+package-lock.json
+docs/**
