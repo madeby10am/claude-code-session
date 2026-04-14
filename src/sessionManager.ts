@@ -390,20 +390,19 @@ export class SessionManager {
       );
       if (!fs.existsSync(plistPath)) { return null; }
 
-      // Use plutil to convert binary plist to JSON, then extract profiles_v3
-      const { execSync } = require('child_process');
-      const raw = execSync(
-        `plutil -p "${plistPath}" -o /dev/null 2>/dev/null; python3 -c "
-import plistlib, json, sys
-with open('${plistPath}', 'rb') as f:
-    p = plistlib.load(f)
-profiles = json.loads(p.get('profiles_v3', b'[]'))
+      // Convert binary plist to XML, then parse profiles_v3 data
+      const { execFileSync } = require('child_process');
+      const raw = execFileSync(
+        'python3',
+        ['-c', `import plistlib,json,sys
+with open(sys.argv[1],'rb') as f:
+    p=plistlib.load(f)
+profiles=json.loads(p.get('profiles_v3',b'[]'))
 for prof in profiles:
-    cu = prof.get('claudeUsage')
+    cu=prof.get('claudeUsage')
     if cu:
         print(json.dumps(cu))
-        sys.exit(0)
-"`,
+        sys.exit(0)`, plistPath],
         { encoding: 'utf8', timeout: 3000 }
       ).trim();
 
@@ -955,6 +954,8 @@ for prof in profiles:
             /\b(which|would you( like)?|do you want|please (choose|select|let me know)|what would|how would you|shall i|should i)\b/i.test(lastText) ||
             /^\s*\d+[.)]\s+\S/m.test(lastText); // numbered list options
           s.needsInput = isQuestion;
+        } else {
+          s.needsInput = false;
         }
 
         // Extract model
@@ -1065,11 +1066,13 @@ for prof in profiles:
 
   private pruneInactive(): void {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+    let changed = false;
     for (const [id, entry] of this.entries.entries()) {
       // Remove if the backing file no longer exists (chat was deleted)
       try {
         if (!fs.existsSync(entry.filePath)) {
           this.removeSession(id);
+          changed = true;
           continue;
         }
       } catch { /* ignore */ }
@@ -1078,8 +1081,10 @@ for prof in profiles:
         this.clearEntryTimers(entry);
         this.entries.delete(id);
         this.sessions.delete(id);
+        changed = true;
       }
     }
+    if (changed) { this.scheduleUpdate(); }
   }
 
   // -------------------------------------------------------------------------
