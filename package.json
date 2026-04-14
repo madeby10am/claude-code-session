@@ -1,7 +1,8 @@
 {
-  "name": "pixel-agent",
-  "displayName": "Pixel Agent",
-  "description": "A pixel art developer companion that reacts to your coding activity",
+  "name": "claude-code-session",
+  "publisher": "local",
+  "displayName": "Claude Code Session",
+  "description": "Monitor Claude Code sessions with a pixel art companion",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.85.0"
@@ -13,10 +14,36 @@
     "*"
   ],
   "main": "./out/extension.js",
-  "contributes": {},
+  "contributes": {
+    "commands": [
+      {
+        "command": "claude-code-session.open",
+        "title": "Claude Code Session: Open"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "claude-code-session",
+          "title": "Claude Code Session",
+          "icon": "assets/icon-light.svg"
+        }
+      ]
+    },
+    "views": {
+      "claude-code-session": [
+        {
+          "type": "webview",
+          "id": "claude-code-session.sidebar",
+          "name": "Claude Sessions"
+        }
+      ]
+    }
+  },
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
+    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.0.1/out/",
     "watch": "tsc -watch -p ./",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run"

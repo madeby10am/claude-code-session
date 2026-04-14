@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Antenna dot -->
+  <circle cx="12" cy="2" r="1.5" fill="#424242"/>
+  <!-- Antenna stem -->
+  <rect x="11" y="3" width="2" height="3" fill="#424242"/>
+  <!-- Head -->
+  <rect x="4" y="6" width="16" height="11" rx="2" fill="#424242"/>
+  <!-- Eye cutouts (white) -->
+  <rect x="7" y="9" width="4" height="4" rx="0.5" fill="white"/>
+  <rect x="13" y="9" width="4" height="4" rx="0.5" fill="white"/>
+  <!-- Neck -->
+  <rect x="9" y="17" width="2" height="2" fill="#424242"/>
+  <rect x="13" y="17" width="2" height="2" fill="#424242"/>
+  <!-- Body -->
+  <rect x="6" y="19" width="12" height="4" rx="1.5" fill="#424242"/>
+</svg>

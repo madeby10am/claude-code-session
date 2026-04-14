@@ -8,6 +8,7 @@ import * as path from 'path';
 
 export type ActivityState =
   | 'idle'
+  | 'thinking'
   | 'user_sent'
   | 'tooling'
   | 'responding'
@@ -25,6 +26,7 @@ export interface SessionState {
   entrypoint:     string;
   permissionMode: string;
   speed:          string;
+  effort:         string;
   inputTokens:    number;
   outputTokens:   number;
   cacheTokens:    number;
@@ -33,23 +35,43 @@ export interface SessionState {
   turnCount:      number;
   toolUseCount:   number;
   lastAction:     string;
+  needsInput:     boolean;
   activity:       ActivityState;
   lastSeen:       number;
   startedAt:      number;
   hueShift:       number;
 }
 
+export interface UsageStats {
+  today: { outputTokens: number };
+  week:  { outputTokens: number };
+  claudeUsage: {
+    sessionPercentage: number;
+    sessionTokensUsed: number;
+    sessionLimit: number;
+    sessionResetTime: number;
+    weeklyPercentage: number;
+    weeklyTokensUsed: number;
+    weeklyLimit: number;
+    weeklyResetTime: number;
+  } | null;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const CLAUDE_PROJECTS_DIR  = path.join(os.homedir(), '.claude', 'projects');
+const CLAUDE_DIR            = path.join(os.homedir(), '.claude');
+const CLAUDE_PROJECTS_DIR  = path.join(CLAUDE_DIR, 'projects');
+const CLAUDE_SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json');
 const HEAD_BYTES            = 1024;
 const TAIL_BYTES            = 4096;
-const ACTIVE_WINDOW_MS      = 10 * 60 * 1000;   // 10 min
-const IDLE_TIMEOUT_MS       = 10 * 1000;         // 10 sec: responding → idle
-const SLEEP_TIMEOUT_MS      = 2  * 60 * 1000;   // 2  min: idle → sleeping
-const PRUNE_INTERVAL_MS     = 5  * 60 * 1000;   // 5  min
+const ACTIVE_WINDOW_MS      = 60 * 60 * 1000;      // 1 hr: prune sessions older than this
+const SEED_WINDOW_MS        = 60 * 60 * 1000;      // 1 hr: scan files this old at startup
+const IDLE_TIMEOUT_MS       = 10 * 1000;            // 10 sec: responding → idle
+const SLEEP_TIMEOUT_MS      = 2  * 60 * 1000;       // 2  min: idle → sleeping
+const PRUNE_INTERVAL_MS     = 5  * 60 * 1000;       // 5  min
+const SYNC_INTERVAL_MS      = 3  * 1000;            // 3  sec: detect deleted files
 const DEBOUNCE_MS           = 100;
 
 const CONTEXT_LIMITS: Record<string, number> = {
@@ -93,6 +115,7 @@ function defaultSession(
     entrypoint:     '',
     permissionMode: '',
     speed:          '',
+    effort:         '',
     inputTokens:    0,
     outputTokens:   0,
     cacheTokens:    0,
@@ -101,6 +124,7 @@ function defaultSession(
     turnCount:      0,
     toolUseCount:   0,
     lastAction:     '',
+    needsInput:     false,
     activity:       'idle',
     lastSeen:     Date.now(),
     startedAt:    Date.now(),
@@ -150,6 +174,8 @@ export class SessionManager {
   private hueIndex   = 0;
   private debounceId: ReturnType<typeof setTimeout> | null = null;
   private pruneId:    ReturnType<typeof setInterval> | null = null;
+  private syncId:     ReturnType<typeof setInterval> | null = null;
+  private globalEffort = '';
 
   constructor(
     private readonly onUpdate: (sessions: Map<string, SessionState>) => void
@@ -159,6 +185,170 @@ export class SessionManager {
 
   getSessions(): Map<string, SessionState> {
     return this.sessions;
+  }
+
+  getRecentFiles(sessionId?: string): string[] {
+    // Find the most recent session if no ID given
+    const id = sessionId || this.getMostRecentSessionId();
+    if (!id) { return []; }
+
+    const entry = this.entries.get(id);
+    if (!entry) { return []; }
+
+    try {
+      const content = fs.readFileSync(entry.filePath, 'utf-8');
+      const files: string[] = [];
+      const seen = new Set<string>();
+
+      for (const line of content.split('\n')) {
+        if (!line.includes('"tool_use"')) { continue; }
+        try {
+          const obj = JSON.parse(line);
+          if (obj.type !== 'assistant') { continue; }
+          const blocks = obj.message?.content;
+          if (!Array.isArray(blocks)) { continue; }
+          for (const b of blocks) {
+            if (b.type !== 'tool_use') { continue; }
+            const name = b.name;
+            if (name === 'Read' || name === 'Edit' || name === 'Write') {
+              const fp = b.input?.file_path;
+              if (fp && typeof fp === 'string') {
+                const base = path.basename(fp);
+                if (!seen.has(base)) {
+                  seen.add(base);
+                  files.push(base);
+                }
+              }
+            }
+          }
+        } catch { /* skip */ }
+      }
+      return files.slice(-10);
+    } catch { return []; }
+  }
+
+  getMcpServers(): string[] {
+    const servers: string[] = [];
+    try {
+      const globalMcp = path.join(CLAUDE_DIR, 'mcp.json');
+      if (fs.existsSync(globalMcp)) {
+        const data = JSON.parse(fs.readFileSync(globalMcp, 'utf-8'));
+        if (data.mcpServers) {
+          servers.push(...Object.keys(data.mcpServers));
+        }
+      }
+    } catch { /* ignore */ }
+    return servers;
+  }
+
+  getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {
+    return Array.from(this.sessions.values())
+      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
+      .slice(0, 5)
+      .map(s => ({
+        sessionId: s.sessionId,
+        title: s.chatTitle || s.projectName || s.slug,
+        lastSeen: s.lastSeen,
+        activity: s.activity,
+      }));
+  }
+
+  private getMostRecentSessionId(): string | undefined {
+    let best: SessionState | undefined;
+    for (const s of this.sessions.values()) {
+      if (!best || s.lastSeen > best.lastSeen) { best = s; }
+    }
+    return best?.sessionId;
+  }
+
+  computeUsageFromLogs(): UsageStats {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const weekStart  = todayStart - 6 * 24 * 60 * 60 * 1000;
+
+    let todayOut = 0;
+    let weekOut  = 0;
+
+    try {
+      const slugs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
+      for (const slug of slugs) {
+        const slugDir = path.join(CLAUDE_PROJECTS_DIR, slug);
+        try {
+          if (!fs.statSync(slugDir).isDirectory()) { continue; }
+        } catch { continue; }
+
+        let files: string[];
+        try { files = fs.readdirSync(slugDir).filter(f => f.endsWith('.jsonl')); }
+        catch { continue; }
+
+        for (const file of files) {
+          const filePath = path.join(slugDir, file);
+          try {
+            const mtime = fs.statSync(filePath).mtimeMs;
+            if (mtime < weekStart) { continue; } // skip old files
+
+            const content = fs.readFileSync(filePath, 'utf-8');
+            for (const line of content.split('\n')) {
+              if (!line.includes('"output_tokens"')) { continue; }
+              try {
+                const entry = JSON.parse(line);
+                if (entry.type !== 'assistant' || !entry.message?.usage?.output_tokens) { continue; }
+                const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : mtime;
+                const out = entry.message.usage.output_tokens as number;
+                if (ts >= todayStart) { todayOut += out; }
+                if (ts >= weekStart)  { weekOut  += out; }
+              } catch { /* skip unparseable lines */ }
+            }
+          } catch { continue; }
+        }
+      }
+    } catch { /* projects dir missing */ }
+
+    return {
+      today: { outputTokens: todayOut },
+      week:  { outputTokens: weekOut },
+      claudeUsage: this.readClaudeUsagePlist(),
+    };
+  }
+
+  private readClaudeUsagePlist(): UsageStats['claudeUsage'] {
+    try {
+      const plistPath = path.join(
+        os.homedir(), 'Library', 'Preferences',
+        'HamedElfayome.Claude-Usage.plist'
+      );
+      if (!fs.existsSync(plistPath)) { return null; }
+
+      // Use plutil to convert binary plist to JSON, then extract profiles_v3
+      const { execSync } = require('child_process');
+      const raw = execSync(
+        `plutil -p "${plistPath}" -o /dev/null 2>/dev/null; python3 -c "
+import plistlib, json, sys
+with open('${plistPath}', 'rb') as f:
+    p = plistlib.load(f)
+profiles = json.loads(p.get('profiles_v3', b'[]'))
+for prof in profiles:
+    cu = prof.get('claudeUsage')
+    if cu:
+        print(json.dumps(cu))
+        sys.exit(0)
+"`,
+        { encoding: 'utf8', timeout: 3000 }
+      ).trim();
+
+      if (!raw) { return null; }
+      const cu = JSON.parse(raw);
+      return {
+        sessionPercentage: cu.sessionPercentage ?? 0,
+        sessionTokensUsed: cu.sessionTokensUsed ?? 0,
+        sessionLimit:      cu.sessionLimit ?? 0,
+        sessionResetTime:  cu.sessionResetTime ?? 0,
+        weeklyPercentage:  cu.weeklyPercentage ?? 0,
+        weeklyTokensUsed:  cu.weeklyTokensUsed ?? 0,
+        weeklyLimit:       cu.weeklyLimit ?? 0,
+        weeklyResetTime:   cu.weeklyResetTime ?? 0,
+      };
+    } catch { return null; }
   }
 
   dispose(): void {
@@ -174,16 +364,15 @@ export class SessionManager {
       this.pruneId = null;
     }
 
+    // Cancel sync sweep
+    if (this.syncId !== null) {
+      clearInterval(this.syncId);
+      this.syncId = null;
+    }
+
     // Cancel all timers
     for (const entry of this.entries.values()) {
-      if (entry.idleTimer !== null) {
-        clearTimeout(entry.idleTimer);
-        entry.idleTimer = null;
-      }
-      if (entry.sleepTimer !== null) {
-        clearTimeout(entry.sleepTimer);
-        entry.sleepTimer = null;
-      }
+      this.clearEntryTimers(entry);
     }
 
     // Close all fs.watch handles
@@ -223,6 +412,10 @@ export class SessionManager {
       }
     } catch { /* ignore */ }
 
+    // Read global effort from settings
+    this.readGlobalEffort();
+    this.watchSettings();
+
     // Emit seeded state so webview gets data immediately
     this.scheduleUpdate();
 
@@ -231,6 +424,43 @@ export class SessionManager {
 
     // Periodic prune sweep
     this.pruneId = setInterval(() => this.pruneInactive(), PRUNE_INTERVAL_MS);
+
+    // Fast sync: detect deleted files every 3s
+    this.syncId = setInterval(() => this.syncDeletedFiles(), SYNC_INTERVAL_MS);
+  }
+
+  // -------------------------------------------------------------------------
+  // Global settings (effort level)
+  // -------------------------------------------------------------------------
+
+  private readGlobalEffort(): void {
+    try {
+      const raw = fs.readFileSync(CLAUDE_SETTINGS_PATH, 'utf8');
+      const obj = JSON.parse(raw) as Record<string, unknown>;
+      const level = obj['effortLevel'] as string | undefined;
+      if (level) { this.globalEffort = level; }
+    } catch { /* file missing or invalid */ }
+  }
+
+  private watchSettings(): void {
+    if (this.watchers.has(CLAUDE_SETTINGS_PATH)) { return; }
+    try {
+      const watcher = fs.watch(CLAUDE_SETTINGS_PATH, () => {
+        const prev = this.globalEffort;
+        this.readGlobalEffort();
+        if (prev !== this.globalEffort) {
+          // Apply to all active sessions
+          for (const s of this.sessions.values()) {
+            s.effort = this.globalEffort;
+          }
+          this.scheduleUpdate();
+        }
+      });
+      watcher.on('error', () => {
+        this.watchers.delete(CLAUDE_SETTINGS_PATH);
+      });
+      this.watchers.set(CLAUDE_SETTINGS_PATH, watcher);
+    } catch { /* ignore */ }
   }
 
   // -------------------------------------------------------------------------
@@ -250,7 +480,7 @@ export class SessionManager {
       try {
         const stat = fs.statSync(filePath);
         const age  = now - stat.mtimeMs;
-        if (age > ACTIVE_WINDOW_MS) { continue; }
+        if (age > SEED_WINDOW_MS) { continue; }
 
         const size = stat.size;
 
@@ -282,8 +512,10 @@ export class SessionManager {
         // Derive sessionId from filename (without extension)
         const sessionId = path.basename(file, '.jsonl');
         const hueShift  = this.nextHue();
+        const state = defaultSession(sessionId, slug, hueShift);
+        if (this.globalEffort) { state.effort = this.globalEffort; }
         const entry: SessionEntry = {
-          state:      defaultSession(sessionId, slug, hueShift),
+          state,
           fileOffset: size,
           filePath,
           idleTimer:  null,
@@ -293,17 +525,56 @@ export class SessionManager {
         this.entries.set(sessionId, entry);
         this.sessions.set(sessionId, entry.state);
 
-        // Parse head first (catches ai-title), then tail (recent activity)
+        // Parse head first, then tail (recent activity)
         this.parseLines(headRaw, entry);
         if (tailRaw) {
           this.parseLines(tailRaw, entry);
         }
 
-        // Start sleep timer
-        this.resetTimers(entry);
+        // ai-title can appear anywhere in the file — scan for it if not found
+        if (!entry.state.chatTitle) {
+          this.scanForTitle(filePath, entry);
+        }
+
+        // Set correct initial activity based on how old the last entry actually is
+        const lastSeenAge = now - entry.state.lastSeen;
+        if (lastSeenAge > SLEEP_TIMEOUT_MS) {
+          entry.state.activity = 'sleeping';
+          // No timers — prune sweep will remove it once past ACTIVE_WINDOW_MS
+        } else {
+          this.resetTimers(entry);
+        }
 
       } catch { /* ignore bad file */ }
     }
+  }
+
+  /**
+   * Scan an entire JSONL file for the last ai-title line.
+   * Reads the raw file as a string and searches for ai-title entries
+   * so we don't miss titles that fall outside the head/tail windows.
+   */
+  private scanForTitle(filePath: string, entry: SessionEntry): void {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const marker = '"ai-title"';
+      let lastIdx = content.lastIndexOf(marker);
+      if (lastIdx === -1) { return; }
+
+      // Walk back to find the start of this line
+      const lineStart = content.lastIndexOf('\n', lastIdx) + 1;
+      const lineEnd   = content.indexOf('\n', lastIdx);
+      const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+      if (!line) { return; }
+
+      try {
+        const obj = JSON.parse(line);
+        const title = obj['aiTitle'] as string | undefined;
+        if (title) {
+          entry.state.chatTitle = title;
+        }
+      } catch { /* malformed line */ }
+    } catch { /* file read error */ }
   }
 
   // -------------------------------------------------------------------------
@@ -357,18 +628,31 @@ export class SessionManager {
   // -------------------------------------------------------------------------
 
   private handleFileChange(slug: string, filePath: string): void {
-    try {
-      const stat = fs.statSync(filePath);
-      if (!stat.isFile()) { return; }
+    const sessionId = path.basename(filePath, '.jsonl');
 
-      // Find or create session entry for this file
-      const sessionId = path.basename(filePath, '.jsonl');
+    // Detect file deletion — remove session if the file is gone
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+      if (!stat.isFile()) {
+        this.removeSession(sessionId);
+        return;
+      }
+    } catch {
+      // File doesn't exist anymore — it was deleted
+      this.removeSession(sessionId);
+      return;
+    }
+
+    try {
       let entry = this.entries.get(sessionId);
 
       if (!entry) {
         const hueShift = this.nextHue();
+        const state = defaultSession(sessionId, slug, hueShift);
+        if (this.globalEffort) { state.effort = this.globalEffort; }
         entry = {
-          state:      defaultSession(sessionId, slug, hueShift),
+          state,
           fileOffset: 0,
           filePath,
           idleTimer:  null,
@@ -405,7 +689,6 @@ export class SessionManager {
       const changed = this.parseLines(raw, entry);
 
       if (changed) {
-        this.pruneInactive();
         this.resetTimers(entry);
         this.scheduleUpdate();
       }
@@ -464,7 +747,10 @@ export class SessionManager {
     }
 
     if (typeof obj['timestamp'] === 'string' || typeof obj['timestamp'] === 'number') {
-      s.lastSeen = Date.now();
+      const ts = typeof obj['timestamp'] === 'string'
+        ? new Date(obj['timestamp'] as string).getTime()
+        : obj['timestamp'] as number;
+      if (!isNaN(ts) && ts > 0) { s.lastSeen = ts; }
       changed = true;
     }
 
@@ -472,6 +758,13 @@ export class SessionManager {
     const entrypoint = obj['entrypoint'] as string | undefined;
     if (entrypoint && !s.entrypoint) {
       s.entrypoint = entrypoint;
+      changed = true;
+    }
+
+    // Extract effort from top-level fields
+    const effort = (obj['reasoningEffort'] ?? obj['reasoning_effort']) as string | undefined;
+    if (effort) {
+      s.effort = effort;
       changed = true;
     }
 
@@ -526,12 +819,13 @@ export class SessionManager {
             (c as Record<string, unknown>)['type'] === 'tool_result'
         );
 
+      s.needsInput = false;
       if (!hasToolResult) {
         s.activity = 'user_sent';
         s.lastSeen = Date.now();
         s.turnCount++;
-        changed = true;
       }
+      changed = true;
       return changed;
     }
 
@@ -556,6 +850,9 @@ export class SessionManager {
             const toolName = toolBlock['name'] as string || '';
             const toolInput = (toolBlock['input'] as Record<string, unknown>) || {};
             s.lastAction = humanizeToolUse(toolName, toolInput);
+            if (toolName === 'AskUserQuestion') {
+              s.needsInput = true;
+            }
             changed = true;
           }
         }
@@ -570,11 +867,29 @@ export class SessionManager {
         s.lastSeen = Date.now();
         changed = true;
 
+        // Detect if Claude is asking a question or presenting choices
+        const textBlocks = Array.isArray(contentBlocks)
+          ? contentBlocks.filter(
+              (b): b is Record<string, unknown> =>
+                typeof b === 'object' && b !== null &&
+                (b as Record<string, unknown>)['type'] === 'text'
+            )
+          : [];
+        if (textBlocks.length > 0) {
+          const lastText = String(
+            (textBlocks[textBlocks.length - 1] as Record<string, unknown>)['text'] ?? ''
+          ).trimEnd();
+          const isQuestion =
+            lastText.endsWith('?') ||
+            /\b(which|would you( like)?|do you want|please (choose|select|let me know)|what would|how would you|shall i|should i)\b/i.test(lastText) ||
+            /^\s*\d+[.)]\s+\S/m.test(lastText); // numbered list options
+          s.needsInput = isQuestion;
+        }
+
         // Extract model
         const model = (message?.['model'] ?? obj['model']) as string | undefined;
         if (model) { s.model = model; }
 
-        // Extract usage (accumulate across messages)
         const usage = (message?.['usage'] ?? obj['usage']) as Record<string, unknown> | undefined;
         if (usage) {
           if (typeof usage['input_tokens'] === 'number') {
@@ -587,17 +902,14 @@ export class SessionManager {
           const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
           s.cacheTokens += cacheCreate + cacheRead;
 
-          // Extract speed
           const speed = usage['speed'] as string | undefined;
           if (speed) { s.speed = speed; }
-        }
 
-        // Recompute contextPct: total context = input + cache_read + cache_creation
-        if (usage) {
-          const inp   = (usage['input_tokens']                  as number | undefined) ?? 0;
-          const cRead = (usage['cache_read_input_tokens']       as number | undefined) ?? 0;
-          const cCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
-          const totalContext = inp + cRead + cCreate;
+          const effort = usage['reasoning_effort'] as string | undefined;
+          if (effort) { s.effort = effort; }
+
+          const latestInput = (usage['input_tokens'] as number | undefined) ?? 0;
+          const totalContext = latestInput + cacheCreate + cacheRead;
           const limit = getContextLimit(s.model);
           s.contextPct = Math.min(100, Math.round((totalContext / limit) * 100));
         }
@@ -622,11 +934,23 @@ export class SessionManager {
   }
 
   // -------------------------------------------------------------------------
+  // Session removal (file deleted)
+  // -------------------------------------------------------------------------
+
+  private removeSession(sessionId: string): void {
+    const entry = this.entries.get(sessionId);
+    if (!entry) { return; }
+    this.clearEntryTimers(entry);
+    this.entries.delete(sessionId);
+    this.sessions.delete(sessionId);
+    this.scheduleUpdate();
+  }
+
+  // -------------------------------------------------------------------------
   // Idle + sleep timers
   // -------------------------------------------------------------------------
 
-  private resetTimers(entry: SessionEntry): void {
-    // Clear existing timers
+  private clearEntryTimers(entry: SessionEntry): void {
     if (entry.idleTimer !== null) {
       clearTimeout(entry.idleTimer);
       entry.idleTimer = null;
@@ -635,15 +959,24 @@ export class SessionManager {
       clearTimeout(entry.sleepTimer);
       entry.sleepTimer = null;
     }
+  }
 
-    // After 10s of no new data → idle
+  private resetTimers(entry: SessionEntry): void {
+    this.clearEntryTimers(entry);
+
+    // After 10s of no new data → thinking (if actively working) or idle
     entry.idleTimer = setTimeout(() => {
       entry.idleTimer = null;
-      if (entry.state.activity !== 'sleeping') {
+      if (entry.state.activity === 'sleeping') { return; }
+      // user_sent and tooling both mean Claude is mid-work — stay in thinking
+      if (entry.state.activity === 'user_sent' || entry.state.activity === 'tooling') {
+        entry.state.activity = 'thinking';
+      } else if (entry.state.activity !== 'thinking') {
+        // responding → idle (turn is done), anything else → idle
         entry.state.activity = 'idle';
-        this.sessions.set(entry.state.sessionId, entry.state);
-        this.scheduleUpdate();
       }
+      this.sessions.set(entry.state.sessionId, entry.state);
+      this.scheduleUpdate();
     }, IDLE_TIMEOUT_MS);
 
     // After 5min of no new data → sleeping
@@ -662,18 +995,40 @@ export class SessionManager {
   private pruneInactive(): void {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     for (const [id, entry] of this.entries.entries()) {
+      // Remove if the backing file no longer exists (chat was deleted)
+      try {
+        if (!fs.existsSync(entry.filePath)) {
+          this.removeSession(id);
+          continue;
+        }
+      } catch { /* ignore */ }
+
       if (entry.state.lastSeen < cutoff) {
-        if (entry.idleTimer !== null) {
-          clearTimeout(entry.idleTimer);
-          entry.idleTimer = null;
-        }
-        if (entry.sleepTimer !== null) {
-          clearTimeout(entry.sleepTimer);
-          entry.sleepTimer = null;
-        }
+        this.clearEntryTimers(entry);
         this.entries.delete(id);
         this.sessions.delete(id);
       }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Fast sync: detect deleted JSONL files
+  // -------------------------------------------------------------------------
+
+  private syncDeletedFiles(): void {
+    let changed = false;
+    for (const [id, entry] of this.entries.entries()) {
+      try {
+        if (!fs.existsSync(entry.filePath)) {
+          this.clearEntryTimers(entry);
+          this.entries.delete(id);
+          this.sessions.delete(id);
+          changed = true;
+        }
+      } catch { /* ignore */ }
+    }
+    if (changed) {
+      this.scheduleUpdate();
     }
   }
 
