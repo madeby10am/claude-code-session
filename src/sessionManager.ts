@@ -253,6 +253,77 @@ export class SessionManager {
       }));
   }
 
+  getSkills(): { name: string; source: string; description: string }[] {
+    const skills: { name: string; source: string; description: string }[] = [];
+    const seen = new Set<string>();
+
+    const parseDescription = (filePath: string): string => {
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const match = content.match(/description:\s*>?\s*\n?\s*(.+?)(?:\n\S|\n---)/s);
+        if (match) {
+          return match[1].replace(/\n\s*/g, ' ').trim().slice(0, 120);
+        }
+        const singleLine = content.match(/description:\s*["']?(.+?)["']?\s*$/m);
+        if (singleLine) {
+          return singleLine[1].trim().slice(0, 120);
+        }
+      } catch { /* ignore */ }
+      return '';
+    };
+
+    // User skills
+    try {
+      const userSkillsDir = path.join(CLAUDE_DIR, 'skills');
+      if (fs.existsSync(userSkillsDir)) {
+        for (const name of fs.readdirSync(userSkillsDir)) {
+          const skillFile = path.join(userSkillsDir, name, 'SKILL.md');
+          if (fs.existsSync(skillFile) && !seen.has(name)) {
+            seen.add(name);
+            skills.push({ name, source: 'user', description: parseDescription(skillFile) });
+          }
+        }
+      }
+    } catch { /* ignore */ }
+
+    // Plugin skills: cache/<vendor>/<plugin>/<version>/skills/<name>/SKILL.md
+    try {
+      const cacheDir = path.join(CLAUDE_DIR, 'plugins', 'cache');
+      if (fs.existsSync(cacheDir)) {
+        for (const vendor of fs.readdirSync(cacheDir)) {
+          const vendorDir = path.join(cacheDir, vendor);
+          try {
+            if (!fs.statSync(vendorDir).isDirectory()) { continue; }
+            for (const plugin of fs.readdirSync(vendorDir)) {
+              const pluginDir = path.join(vendorDir, plugin);
+              try {
+                if (!fs.statSync(pluginDir).isDirectory()) { continue; }
+                const candidates = [path.join(pluginDir, 'skills')];
+                for (const version of fs.readdirSync(pluginDir)) {
+                  candidates.push(path.join(pluginDir, version, 'skills'));
+                }
+                for (const skillsDir of candidates) {
+                  try {
+                    if (!fs.existsSync(skillsDir) || !fs.statSync(skillsDir).isDirectory()) { continue; }
+                    for (const name of fs.readdirSync(skillsDir)) {
+                      const sf = path.join(skillsDir, name, 'SKILL.md');
+                      if (!seen.has(name) && fs.existsSync(sf)) {
+                        seen.add(name);
+                        skills.push({ name, source: 'plugin', description: parseDescription(sf) });
+                      }
+                    }
+                  } catch { /* ignore */ }
+                }
+              } catch { /* ignore */ }
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+
+    return skills.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   private getMostRecentSessionId(): string | undefined {
     let best: SessionState | undefined;
     for (const s of this.sessions.values()) {

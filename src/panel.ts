@@ -190,7 +190,7 @@ export class Panel implements vscode.WebviewViewProvider {
     this.postMessage({ type: 'usageUpdate', usage });
   }
 
-  sendEnvData(data: { recentFiles: string[]; mcpServers: string[]; recentSessions: { sessionId: string; title: string; lastSeen: number; activity: string }[] }): void {
+  sendEnvData(data: { recentFiles: string[]; mcpServers: string[]; recentSessions: { sessionId: string; title: string; lastSeen: number; activity: string }[]; skills: { name: string; source: string }[] }): void {
     this.postMessage({ type: 'envData', data });
   }
 
@@ -309,6 +309,15 @@ html, body {
   padding: 0;
 }
 
+/* ===== Sticky top ===== */
+#sticky-top {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #ffffff;
+}
+body.dark #sticky-top { background: #0d1117; }
+
 /* ===== Header ===== */
 .header {
   padding: 8px 16px;
@@ -352,12 +361,59 @@ html, body {
 .section-header {
   padding: 12px 20px 8px;
   font-size: 10px;
-  font-weight: 600;
-  color: #a0a0a0;
+  font-weight: 700;
+  color: #18181b;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   user-select: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
 }
+.section-chevron {
+  font-size: 10px;
+  color: #a0a0a0;
+  transition: transform 0.2s;
+  margin-left: auto;
+}
+.section-pin {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  margin-right: 2px;
+  flex-shrink: 0;
+  color: #c0c0c0;
+  transition: color 0.15s, transform 0.15s;
+}
+.section-pin:hover { color: #737373; }
+.section-pin[data-pinned="true"] { color: #3b82f6; transform: rotate(-45deg); }
+body.dark .section-pin { color: #484f58; }
+body.dark .section-pin:hover { color: #8b949e; }
+body.dark .section-pin[data-pinned="true"] { color: #58a6ff; }
+
+.section[data-pinned="true"] {
+  position: sticky;
+  z-index: 5;
+  background: #ffffff;
+}
+body.dark .section[data-pinned="true"] { background: #0d1117; }
+.section-header[data-open="false"] .section-chevron { transform: rotate(-90deg); }
+.section-header[data-open="false"] + .section-body { display: none; }
+
+/* Drag handle */
+.section[draggable="true"] .section-header::before {
+  content: '\\2261';
+  margin-right: 6px;
+  color: #c0c0c0;
+  font-size: 14px;
+  cursor: grab;
+  flex-shrink: 0;
+}
+body.dark .section[draggable="true"] .section-header::before { color: #484f58; }
+.section.dragging { opacity: 0.4; }
+.section.drag-over { border-top: 2px solid #3b82f6; }
 .section-body {
   padding: 0 20px 14px;
 }
@@ -676,6 +732,62 @@ html, body {
   40% { opacity: 1; }
 }
 
+/* ===== Skills filter & items ===== */
+.skills-filter-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid #e0e0e0;
+  background: #fafafa;
+  color: #737373;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+.skills-filter-btn[data-active="true"] {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+.skill-item {
+  padding: 5px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.skill-item:last-child { border-bottom: none; }
+.skill-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #18181b;
+}
+.skill-desc {
+  font-size: 10px;
+  color: #737373;
+  line-height: 1.3;
+  margin-top: 1px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.skill-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 0 4px;
+  border-radius: 3px;
+  margin-left: 4px;
+}
+.skill-badge-user { background: #eff6ff; color: #2563eb; }
+.skill-badge-plugin { background: #f5f5f5; color: #737373; }
+
+body.dark .skills-filter-btn { background: #161b22; border-color: #30363d; color: #8b949e; }
+body.dark .skills-filter-btn[data-active="true"] { background: #3b82f6; color: #fff; border-color: #3b82f6; }
+body.dark #skills-search { background: #161b22; border-color: #30363d; color: #e6edf3; }
+body.dark .skill-item { border-bottom-color: #21262d; }
+body.dark .skill-name { color: #e6edf3; }
+body.dark .skill-desc { color: #8b949e; }
+body.dark .skill-badge-user { background: #132337; color: #58a6ff; }
+body.dark .skill-badge-plugin { background: #21262d; color: #8b949e; }
+
 /* ===== Usage meters ===== */
 .usage-meter { }
 .usage-meter-label {
@@ -780,7 +892,9 @@ body.dark .header-git-item { color: #8b949e; }
 body.dark .header-git-sep { color: #30363d; }
 
 body.dark .section { border-bottom-color: #21262d; }
-body.dark .section-header { color: #8b949e; }
+body.dark .section-header { color: #e6edf3; }
+body.dark .section-chevron { color: #484f58; }
+body.dark .section.drag-over { border-top-color: #58a6ff; }
 
 body.dark .session-card {
   background: #161b22;
@@ -824,7 +938,40 @@ body.dark .cap-dot[data-status="detected"]  { background: #3fb950; }
 body.dark .cap-dot[data-status="missing"]   { background: #f85149; }
 body.dark .cap-dot[data-status="yes"]       { background: #3fb950; }
 
-/* Character area */
+/* Robot status bar (sticky header row 2) */
+.robot-bar {
+  display: flex;
+  align-items: center;
+  padding: 2px 12px 4px;
+  gap: 8px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.robot-bar-canvas {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  flex-shrink: 0;
+}
+.robot-bar-bubble {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  font-family: var(--vscode-editor-font-family, 'SF Mono', 'Fira Code', 'Consolas', monospace);
+  color: #525252;
+  display: flex;
+  align-items: baseline;
+}
+.robot-bar-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+body.dark .robot-bar { border-bottom-color: #21262d; }
+body.dark .robot-bar-bubble { color: #8b949e; }
+
+/* Character area (in-card, legacy) */
 body.dark .character-area { border-top-color: #21262d; }
 body.dark .speech-bubble { background: #161b22; border-color: #30363d; }
 body.dark .speech-bubble::before { border-right-color: #30363d; }
@@ -836,25 +983,30 @@ body.dark .speech-bubble-content { color: #e6edf3; }
 <body>
 <div id="root">
 
-  <!-- HEADER — folder left, git right -->
-  <div class="header">
-    <div class="header-left">
-      <span class="header-project" id="pi-workspace"></span>
+  <!-- STICKY TOP -->
+  <div id="sticky-top">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <span class="header-project" id="pi-workspace"></span>
+      </div>
+      <div class="header-right" style="display:flex;align-items:center;gap:6px;">
+        <button class="dark-toggle" id="dark-toggle" data-on="false" title="Toggle dark mode"></button>
+      </div>
     </div>
-    <div class="header-right" style="display:flex;align-items:center;gap:6px;">
-      <span class="header-git-item" id="pi-remote"></span>
-      <span class="header-git-sep">&middot;</span>
-      <span class="header-git-item" id="pi-branch"></span>
-      <span class="header-git-sep">&middot;</span>
-      <span class="header-git-item" id="pi-user" style="color:#a0a0a0;"></span>
-      <span class="header-git-sep">&middot;</span>
-      <button class="dark-toggle" id="dark-toggle" data-on="false" title="Toggle dark mode"></button>
+    <!-- ROBOT STATUS BAR -->
+    <div class="robot-bar">
+      <canvas class="robot-bar-canvas" id="robot-bar-canvas" width="48" height="48"></canvas>
+      <div class="robot-bar-bubble" id="robot-bar-bubble">
+        <span class="robot-bar-text" id="robot-bar-text">Idle</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      </div>
     </div>
-  </div>
+
+  </div><!-- /sticky-top -->
 
   <!-- USAGE METERS -->
-  <div class="section" id="usage-section">
-    <div class="section-header">Usage</div>
+  <div class="section" id="usage-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body">
       <div class="usage-meter">
         <div class="usage-meter-label">
@@ -876,12 +1028,15 @@ body.dark .speech-bubble-content { color: #e6edf3; }
       </div>
     </div>
   </div>
-
   <!-- SESSIONS -->
-  <div class="section" id="sessions-section">
-    <div class="section-header" style="display:flex;justify-content:space-between;align-items:center;">
+  <div class="section" id="sessions-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">
       Sessions
-      <button id="new-session-btn" title="New session" style="background:none;border:1px solid var(--vscode-widget-border, #3c3c3c);border-radius:4px;color:var(--vscode-descriptionForeground, #8b949e);cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;">+</button>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <button id="new-session-btn" title="New session" style="background:none;border:1px solid var(--vscode-widget-border, #3c3c3c);border-radius:4px;color:var(--vscode-descriptionForeground, #8b949e);cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
+        <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+        <span class="section-chevron">&#x25BE;</span>
+      </span>
     </div>
     <div class="section-body" id="session-list">
       <div class="empty-state" id="empty-msg">
@@ -892,17 +1047,18 @@ body.dark .speech-bubble-content { color: #e6edf3; }
   </div>
 
   <!-- RECENT FILES -->
-  <div class="section" id="recent-files-section">
-    <div class="section-header">Recent Files</div>
+  <div class="section" id="recent-files-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Recent Files <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="recent-files-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
   </div>
 
   <!-- GIT STATUS -->
-  <div class="section" id="git-status-section">
-    <div class="section-header">Git Status</div>
+  <div class="section" id="git-status-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="git-status-body">
+      <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
@@ -911,16 +1067,32 @@ body.dark .speech-bubble-content { color: #e6edf3; }
   </div>
 
   <!-- MCP SERVERS -->
-  <div class="section" id="mcp-section">
-    <div class="section-header">MCP Servers</div>
+  <div class="section" id="mcp-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">MCP Servers <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="mcp-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
   </div>
 
+  <!-- SKILLS -->
+  <div class="section" id="skills-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body">
+      <input type="text" id="skills-search" placeholder="Search skills..." style="width:100%;padding:4px 8px;margin-bottom:6px;font-size:11px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa;color:#333;font-family:inherit;outline:none;">
+      <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:8px;">
+        <button class="skills-filter-btn" data-filter="all" data-active="true">All</button>
+        <button class="skills-filter-btn" data-filter="user" data-active="false">User</button>
+        <button class="skills-filter-btn" data-filter="plugin" data-active="false">Plugin</button>
+      </div>
+      <div id="skills-list">
+        <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
+      </div>
+    </div>
+  </div>
+
   <!-- SESSION HISTORY -->
-  <div class="section" id="session-history-section">
-    <div class="section-header">Session History</div>
+  <div class="section" id="session-history-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="session-history-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
@@ -1092,14 +1264,6 @@ function buildCard(s) {
       <span class="session-time-item">&middot;</span>
       <span class="session-time-item" data-duration-start="\${s.startedAt}">\${fmtDuration(s.startedAt)}</span>
     </div>
-    <div class="character-area">
-      <canvas class="robot-canvas" data-session-id="\${s.sessionId}" width="48" height="48"></canvas>
-      <div class="speech-bubble">
-        <div class="speech-bubble-content">
-          <span class="speech-text">\${s.lastAction || ACTIVITY_LABELS[s.activity] || 'Idle'}</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
-        </div>
-      </div>
-    </div>
   \`;
 
   return card;
@@ -1133,6 +1297,18 @@ function renderSessions(sessions) {
 
   // Update per-card animations
   updateAllAnimations(current);
+
+  // Update robot status bar
+  if (sorted.length > 0) {
+    const s = sorted[0];
+    const txt = document.getElementById('robot-bar-text');
+    if (txt) txt.textContent = s.lastAction || ACTIVITY_LABELS[s.activity] || 'Idle';
+    // Drive robot bar animation
+    const newAnim = pickAnim(s.activity, s.lastAction);
+    if (!_animStates['__bar'] || _animStates['__bar'].anim !== newAnim) {
+      _animStates['__bar'] = { anim: newAnim, frame: 0 };
+    }
+  }
 }
 
 // ─── Message handling ───────────────────────────────────────────────────────
@@ -1155,6 +1331,8 @@ window.addEventListener('message', e => {
     if (us) us.textContent = d.gitUser || '';
 
     // Git status section
+    const gr = document.getElementById('git-repo');
+    if (gr) gr.textContent = d.gitRemote || '\\u2014';
     const gb2 = document.getElementById('git-branch2');
     const gu = document.getElementById('git-uncommitted');
     const gab = document.getElementById('git-ahead-behind');
@@ -1191,6 +1369,10 @@ window.addEventListener('message', e => {
         mcpList.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">None configured</div>';
       }
     }
+
+    // Skills
+    _allSkills = d.skills || [];
+    renderSkills();
 
     // Session history
     const shList = document.getElementById('session-history-list');
@@ -1267,10 +1449,7 @@ document.getElementById('dark-toggle').addEventListener('click', () => {
   vscodeApi.postMessage({ type: 'setDarkMode', value: isOn });
 });
 
-document.getElementById('new-session-btn').addEventListener('click', (e) => {
-  e.stopPropagation();
-  vscodeApi.postMessage({ type: 'newSession' });
-});
+// new-session-btn click is handled inline via onclick
 
 // ─── Robot Sprite Animation ────────────────────────────────────────────────
 const ROBOT_URI = '${robotUri}';
@@ -1394,6 +1573,13 @@ function renderLoop(ts) {
       }
       drawRobotForSession(canvas, sid);
     });
+
+    // Robot status bar canvas
+    const barCanvas = document.getElementById('robot-bar-canvas');
+    if (barCanvas && _animStates['__bar']) {
+      if (advance) _animStates['__bar'].frame++;
+      drawRobotForSession(barCanvas, '__bar');
+    }
   }
   requestAnimationFrame(renderLoop);
 }
@@ -1418,6 +1604,173 @@ function updateAllAnimations(sessions) {
     }
   }
 }
+
+// ─── Skills search & filter ─────────────────────────────────────────────────
+let _allSkills = [];
+let _skillFilter = 'all';
+
+function renderSkills() {
+  const list = document.getElementById('skills-list');
+  if (!list) return;
+
+  const query = (document.getElementById('skills-search') || {}).value || '';
+  const q = query.toLowerCase();
+  const filtered = _allSkills.filter(s => {
+    if (_skillFilter !== 'all' && s.source !== _skillFilter) return false;
+    if (q && !s.name.toLowerCase().includes(q) && !(s.description || '').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No skills match</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(s => {
+    const badge = s.source === 'user'
+      ? '<span class="skill-badge skill-badge-user">USER</span>'
+      : '<span class="skill-badge skill-badge-plugin">PLUGIN</span>';
+    const desc = s.description
+      ? '<div class="skill-desc">' + s.description + '</div>'
+      : '';
+    return '<div class="skill-item" data-source="' + s.source + '"><div><span class="skill-name">/' + s.name + '</span>' + badge + '</div>' + desc + '</div>';
+  }).join('');
+}
+
+document.getElementById('skills-search').addEventListener('input', renderSkills);
+
+document.querySelectorAll('.skills-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.skills-filter-btn').forEach(b => b.dataset.active = 'false');
+    btn.dataset.active = 'true';
+    _skillFilter = btn.dataset.filter;
+    renderSkills();
+  });
+});
+
+// ─── Section collapse & drag-to-reorder ─────────────────────────────────────
+function toggleSection(header) {
+  const open = header.dataset.open !== 'false';
+  header.dataset.open = open ? 'false' : 'true';
+  saveLayoutState();
+}
+
+function togglePin(pinEl) {
+  const section = pinEl.closest('.section');
+  const pinned = pinEl.dataset.pinned !== 'true';
+  pinEl.dataset.pinned = String(pinned);
+  section.dataset.pinned = String(pinned);
+  // Calculate sticky top: below sticky-top header + any pinned sections above
+  recalcPinOffsets();
+  saveLayoutState();
+}
+
+function recalcPinOffsets() {
+  const stickyTop = document.getElementById('sticky-top');
+  let offset = stickyTop ? stickyTop.offsetHeight : 0;
+  const sections = document.querySelectorAll('#root > .section[draggable]');
+  sections.forEach(s => {
+    if (s.dataset.pinned === 'true') {
+      s.style.top = offset + 'px';
+      offset += s.offsetHeight;
+    } else {
+      s.style.top = '';
+    }
+  });
+}
+
+function saveLayoutState() {
+  const sections = document.querySelectorAll('#root > .section[draggable]');
+  const order = [];
+  const collapsed = {};
+  const pinned = {};
+  sections.forEach(s => {
+    order.push(s.id);
+    const h = s.querySelector('.section-header');
+    if (h && h.dataset.open === 'false') collapsed[s.id] = true;
+    if (s.dataset.pinned === 'true') pinned[s.id] = true;
+  });
+  vscodeApi.setState({ sectionOrder: order, sectionCollapsed: collapsed, sectionPinned: pinned });
+}
+
+function restoreLayoutState() {
+  const state = vscodeApi.getState();
+  if (!state) return;
+  const root = document.getElementById('root');
+  if (state.sectionOrder) {
+    const sections = {};
+    root.querySelectorAll('.section[draggable]').forEach(s => { sections[s.id] = s; });
+    for (const id of state.sectionOrder) {
+      if (sections[id]) root.appendChild(sections[id]);
+    }
+  }
+  if (state.sectionCollapsed) {
+    for (const [id, val] of Object.entries(state.sectionCollapsed)) {
+      if (!val) continue;
+      const el = document.getElementById(id);
+      if (el) {
+        const h = el.querySelector('.section-header');
+        if (h) h.dataset.open = 'false';
+      }
+    }
+  }
+  if (state.sectionPinned) {
+    for (const [id, val] of Object.entries(state.sectionPinned)) {
+      if (!val) continue;
+      const el = document.getElementById(id);
+      if (el) {
+        el.dataset.pinned = 'true';
+        const pin = el.querySelector('.section-pin');
+        if (pin) pin.dataset.pinned = 'true';
+      }
+    }
+    recalcPinOffsets();
+  }
+}
+
+// Drag to reorder
+let _draggedSection = null;
+document.querySelectorAll('.section[draggable]').forEach(section => {
+  section.addEventListener('dragstart', e => {
+    _draggedSection = section;
+    section.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  section.addEventListener('dragend', () => {
+    section.classList.remove('dragging');
+    document.querySelectorAll('.section.drag-over').forEach(s => s.classList.remove('drag-over'));
+    _draggedSection = null;
+    saveLayoutState();
+  });
+  section.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (section !== _draggedSection) {
+      document.querySelectorAll('.section.drag-over').forEach(s => s.classList.remove('drag-over'));
+      section.classList.add('drag-over');
+    }
+  });
+  section.addEventListener('dragleave', () => {
+    section.classList.remove('drag-over');
+  });
+  section.addEventListener('drop', e => {
+    e.preventDefault();
+    section.classList.remove('drag-over');
+    if (_draggedSection && _draggedSection !== section) {
+      const root = document.getElementById('root');
+      const allSections = [...root.querySelectorAll('.section[draggable]')];
+      const dragIdx = allSections.indexOf(_draggedSection);
+      const dropIdx = allSections.indexOf(section);
+      if (dragIdx < dropIdx) {
+        section.after(_draggedSection);
+      } else {
+        section.before(_draggedSection);
+      }
+    }
+  });
+});
+
+restoreLayoutState();
 
 // ─── Boot ───────────────────────────────────────────────────────────────────
 vscodeApi.postMessage({ type: 'ready' });
