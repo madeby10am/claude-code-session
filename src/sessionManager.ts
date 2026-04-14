@@ -29,7 +29,8 @@ export interface SessionState {
   effort:         string;
   inputTokens:    number;
   outputTokens:   number;
-  cacheTokens:    number;
+  lastInputTokens:  number;
+  lastOutputTokens: number;
   contextPct:     number;
   currentFile:    string;
   turnCount:      number;
@@ -98,6 +99,19 @@ function toProjectName(slug: string): string {
     .join(' ');
 }
 
+/** Find the last occurrence of `marker` in a JSONL string, parse its line, and return `field`. */
+function extractLastField(content: string, marker: string, field: string): string | undefined {
+  const idx = content.lastIndexOf(marker);
+  if (idx === -1) { return undefined; }
+  const lineStart = content.lastIndexOf('\n', idx) + 1;
+  const lineEnd   = content.indexOf('\n', idx);
+  const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+  if (!line) { return undefined; }
+  try {
+    return JSON.parse(line)[field] as string | undefined;
+  } catch { return undefined; }
+}
+
 function defaultSession(
   sessionId: string,
   slug:      string,
@@ -118,7 +132,8 @@ function defaultSession(
     effort:         '',
     inputTokens:    0,
     outputTokens:   0,
-    cacheTokens:    0,
+    lastInputTokens:  0,
+    lastOutputTokens: 0,
     contextPct:     0,
     currentFile:    '',
     turnCount:      0,
@@ -620,30 +635,15 @@ for prof in profiles:
   }
 
   /**
-   * Scan an entire JSONL file for the last ai-title line.
-   * Reads the raw file as a string and searches for ai-title entries
-   * so we don't miss titles that fall outside the head/tail windows.
+   * Scan an entire JSONL file for the last title line (custom-title or ai-title).
+   * custom-title (user rename) takes priority over ai-title (auto-generated).
    */
   private scanForTitle(filePath: string, entry: SessionEntry): void {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
-      const marker = '"ai-title"';
-      let lastIdx = content.lastIndexOf(marker);
-      if (lastIdx === -1) { return; }
-
-      // Walk back to find the start of this line
-      const lineStart = content.lastIndexOf('\n', lastIdx) + 1;
-      const lineEnd   = content.indexOf('\n', lastIdx);
-      const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
-      if (!line) { return; }
-
-      try {
-        const obj = JSON.parse(line);
-        const title = obj['aiTitle'] as string | undefined;
-        if (title) {
-          entry.state.chatTitle = title;
-        }
-      } catch { /* malformed line */ }
+      const title = extractLastField(content, '"custom-title"', 'customTitle')
+                 ?? extractLastField(content, '"ai-title"', 'aiTitle');
+      if (title) { entry.state.chatTitle = title; }
     } catch { /* file read error */ }
   }
 
@@ -853,6 +853,18 @@ for prof in profiles:
     }
 
     // -----------------------------------------------------------------------
+    // custom-title (user renamed the chat)
+    // -----------------------------------------------------------------------
+    if (type === 'custom-title') {
+      const title = obj['customTitle'] as string | undefined;
+      if (title) {
+        s.chatTitle = title;
+        changed = true;
+      }
+      return changed;
+    }
+
+    // -----------------------------------------------------------------------
     // file-history-snapshot
     // -----------------------------------------------------------------------
     if (type === 'file-history-snapshot') {
@@ -964,16 +976,18 @@ for prof in profiles:
 
         const usage = (message?.['usage'] ?? obj['usage']) as Record<string, unknown> | undefined;
         if (usage) {
+          const cacheCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
+          const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
+
           if (typeof usage['input_tokens'] === 'number') {
-            s.inputTokens += usage['input_tokens'];
+            const turnInput = usage['input_tokens'] + cacheCreate + cacheRead;
+            s.inputTokens += turnInput;
+            s.lastInputTokens = turnInput;
           }
           if (typeof usage['output_tokens'] === 'number') {
             s.outputTokens += usage['output_tokens'];
+            s.lastOutputTokens = usage['output_tokens'];
           }
-          const cacheCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
-          const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
-          s.cacheTokens += cacheCreate + cacheRead;
-
           const speed = usage['speed'] as string | undefined;
           if (speed) { s.speed = speed; }
 

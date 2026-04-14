@@ -18,7 +18,14 @@
     "commands": [
       {
         "command": "claude-code-session.open",
-        "title": "Claude Code Session: Open"
+        "title": "Claude Code Session: Open as Split Panel"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "claude-code-session.open",
+        "key": "ctrl+shift+j",
+        "mac": "cmd+shift+j"
       }
     ],
     "viewsContainers": {
@@ -43,7 +50,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.0.1/out/",
+    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.0.1/out/ && cp package.json ~/.vscode/extensions/local.claude-code-session-0.0.1/package.json",
     "watch": "tsc -watch -p ./",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run"

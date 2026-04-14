@@ -484,27 +484,73 @@ body::before {
 
 /* ===== Active Sessions (hero) ===== */
 .session-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
+  position: relative;
+  isolation: isolate;
+  border: none;
   border-radius: 10px;
-  padding: 12px 14px 8px;
+  padding: 14px 16px 10px;
   margin-bottom: 8px;
-  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+  background: transparent;
+  transition: box-shadow 1s ease;
+}
+.session-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  z-index: 0;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 0.5s ease, background 1s ease;
+}
+.session-card::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 8px;
+  background: var(--bg-card);
   backdrop-filter: blur(8px);
+  z-index: 0;
+  transition: background 0.3s;
 }
+.session-card > * { position: relative; z-index: 1; }
 .session-card:last-child { margin-bottom: 0; }
-.session-card:hover {
-  background: var(--bg-card-hover);
-  border-color: var(--border-hover);
-}
+.session-card:hover::after { background: var(--bg-card-hover); }
 
-/* Activity border accent + glow */
-.session-card[data-activity="tooling"]    { border-left: 4px solid var(--blue);   box-shadow: inset 4px 0 12px -6px rgba(59,130,246,0.3); }
-.session-card[data-activity="user_sent"]  { border-left: 4px solid var(--amber);  box-shadow: inset 4px 0 12px -6px rgba(245,158,11,0.3); }
-.session-card[data-activity="thinking"]   { border-left: 4px solid var(--purple); box-shadow: inset 4px 0 12px -6px rgba(167,139,250,0.3); }
-.session-card[data-activity="responding"] { border-left: 4px solid var(--green);  box-shadow: inset 4px 0 12px -6px rgba(16,185,129,0.3); }
-.session-card[data-activity="sleeping"]   { border-left: 4px solid var(--text-muted); }
-.session-card[data-activity="idle"]       { border-left: 4px solid var(--text-muted); }
+/* Activity glow — solid gradient ring matching badge colors */
+.session-card[data-activity="tooling"]::before    { opacity: 1; background: linear-gradient(135deg, #3b82f6, #6366f1); }
+.session-card[data-activity="user_sent"]::before  { opacity: 1; background: linear-gradient(135deg, #f59e0b, #f97316); }
+.session-card[data-activity="thinking"]::before   { opacity: 1; background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.session-card[data-activity="responding"]::before { opacity: 1; background: linear-gradient(135deg, #10b981, #06b6d4); }
+.session-card[data-activity="idle"]::before       { opacity: 1; background: linear-gradient(135deg, #f59e0b, #ef4444); }
+
+/* Outer glow — pulsing */
+.session-card[data-activity="tooling"]    { animation: glowTooling 2s ease-in-out infinite; }
+.session-card[data-activity="user_sent"]  { animation: glowUserSent 2s ease-in-out infinite; }
+.session-card[data-activity="thinking"]   { animation: glowThinking 2s ease-in-out infinite; }
+.session-card[data-activity="responding"] { animation: glowResponding 2s ease-in-out infinite; }
+.session-card[data-activity="idle"]       { animation: glowIdle 2s ease-in-out infinite; }
+
+@keyframes glowTooling {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(59,130,246,0.3), 0 0 40px -5px rgba(99,102,241,0.15); }
+}
+@keyframes glowUserSent {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(245,158,11,0.3), 0 0 40px -5px rgba(249,115,22,0.15); }
+}
+@keyframes glowThinking {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(167,139,250,0.3), 0 0 40px -5px rgba(139,92,246,0.15); }
+}
+@keyframes glowResponding {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(16,185,129,0.3), 0 0 40px -5px rgba(6,182,212,0.15); }
+}
+@keyframes glowIdle {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(245,158,11,0.3), 0 0 40px -5px rgba(239,68,68,0.15); }
+}
 
 .card-top {
   display: flex;
@@ -555,21 +601,36 @@ body::before {
 }
 
 .activity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 9px;
-  font-weight: 600;
-  padding: 2px 8px;
+  font-weight: 700;
+  padding: 2px 8px 2px 6px;
   border-radius: 10px;
   background: rgba(255,255,255,0.06);
-  color: var(--text-dim);
+  color: #fff;
   flex-shrink: 0;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
 }
-.session-card[data-activity="tooling"]    .activity-badge { background: rgba(59,130,246,0.15); color: #60a5fa; }
-.session-card[data-activity="user_sent"]  .activity-badge { background: rgba(245,158,11,0.15); color: #fbbf24; }
-.session-card[data-activity="thinking"]   .activity-badge { background: rgba(167,139,250,0.15); color: #c4b5fd; }
-.session-card[data-activity="responding"] .activity-badge { background: rgba(16,185,129,0.15); color: #34d399; }
-.session-card[data-activity="sleeping"]   .activity-badge { background: rgba(255,255,255,0.04); color: var(--text-muted); }
+.activity-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.9;
+}
+.session-card[data-activity="tooling"]    .activity-badge { --pulse-rgb: 59,130,246; background: linear-gradient(135deg, #3b82f6, #6366f1); animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card[data-activity="user_sent"]  .activity-badge { --pulse-rgb: 245,158,11; background: linear-gradient(135deg, #f59e0b, #f97316); animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card[data-activity="thinking"]   .activity-badge { --pulse-rgb: 167,139,250; background: linear-gradient(135deg, #a78bfa, #8b5cf6); animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card[data-activity="responding"] .activity-badge { --pulse-rgb: 16,185,129; background: linear-gradient(135deg, #10b981, #06b6d4); animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card[data-activity="sleeping"]   .activity-badge { background: linear-gradient(135deg, #4b5563, #374151); box-shadow: 0 0 6px rgba(75,85,99,0.2); color: #9ca3af; }
+.session-card[data-activity="sleeping"]   .activity-dot { opacity: 0.4; }
+
+@keyframes badgePulse {
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px rgba(var(--pulse-rgb),0.35); }
+  50% { opacity: 0.85; transform: scale(0.97); box-shadow: 0 0 16px rgba(var(--pulse-rgb),0.5); }
+}
 
 /* Stats grid inside card */
 .stats-grid {
@@ -602,6 +663,11 @@ body::before {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: right;
+}
+.stat-dim {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 10px;
 }
 
 /* Context bar */
@@ -905,7 +971,7 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
   .header-right { display: none !important; }
   .section-header { padding: 8px 12px 6px; }
   .section-body { padding: 0 12px 10px; }
-  .session-card { padding: 8px 10px 6px; }
+  .session-card { padding: 10px 12px 8px; }
   .stats-grid { grid-template-columns: 1fr; gap: 4px; }
   .stat-label { font-size: 9px; }
   .stat-value { font-size: 10px; }
@@ -917,7 +983,7 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
   .header { padding: 6px 12px; gap: 8px; }
   .header-git-item, .header-git-sep { display: none; }
   .section-body { padding: 0 14px 10px; }
-  .session-card { padding: 10px 12px 6px; }
+  .session-card { padding: 12px 14px 8px; }
   .stats-grid { gap: 4px 10px; }
   .stat-label { font-size: 9px; letter-spacing: 0.02em; }
   .stat-value { font-size: 10px; }
@@ -976,6 +1042,10 @@ body:not(.dark)::before { opacity: 0.015; }
   white-space: nowrap;
   min-width: 0;
 }
+.robot-bar-text .action-target {
+  color: var(--text-bright);
+  font-weight: 700;
+}
 
 </style>
 </head>
@@ -1007,6 +1077,24 @@ body:not(.dark)::before { opacity: 0.015; }
 
   </div><!-- /sticky-top -->
 
+  <!-- SESSIONS -->
+  <div class="section" id="sessions-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">
+      Sessions
+      <span style="display:flex;align-items:center;gap:6px;">
+        <button id="new-session-btn" title="New session" style="background:none;border:1px solid var(--vscode-widget-border, #3c3c3c);border-radius:4px;color:var(--vscode-descriptionForeground, #8b949e);cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
+        <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+        <span class="section-chevron">&#x25BE;</span>
+      </span>
+    </div>
+    <div class="section-body" id="session-list">
+      <div class="empty-state" id="empty-msg">
+        <div class="empty-icon">&#x25CB;</div>
+        No active Claude session
+      </div>
+    </div>
+  </div>
+
   <!-- USAGE METERS -->
   <div class="section" id="usage-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)">Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
@@ -1031,21 +1119,16 @@ body:not(.dark)::before { opacity: 0.015; }
       </div>
     </div>
   </div>
-  <!-- SESSIONS -->
-  <div class="section" id="sessions-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">
-      Sessions
-      <span style="display:flex;align-items:center;gap:6px;">
-        <button id="new-session-btn" title="New session" style="background:none;border:1px solid var(--vscode-widget-border, #3c3c3c);border-radius:4px;color:var(--vscode-descriptionForeground, #8b949e);cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
-        <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-        <span class="section-chevron">&#x25BE;</span>
-      </span>
-    </div>
-    <div class="section-body" id="session-list">
-      <div class="empty-state" id="empty-msg">
-        <div class="empty-icon">&#x25CB;</div>
-        No active Claude session
-      </div>
+
+  <!-- GIT STATUS -->
+  <div class="section" id="git-status-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="git-status-body">
+      <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Last Commit</span><span class="stat-value" id="git-last-commit" title="">&mdash;</span></div>
     </div>
   </div>
 
@@ -1057,15 +1140,11 @@ body:not(.dark)::before { opacity: 0.015; }
     </div>
   </div>
 
-  <!-- GIT STATUS -->
-  <div class="section" id="git-status-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
-    <div class="section-body" id="git-status-body">
-      <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Last Commit</span><span class="stat-value" id="git-last-commit" title="">&mdash;</span></div>
+  <!-- SESSION HISTORY -->
+  <div class="section" id="session-history-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="session-history-list">
+      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
   </div>
 
@@ -1090,14 +1169,6 @@ body:not(.dark)::before { opacity: 0.015; }
       <div id="skills-list">
         <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
       </div>
-    </div>
-  </div>
-
-  <!-- SESSION HISTORY -->
-  <div class="section" id="session-history-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
-    <div class="section-body" id="session-history-list">
-      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
   </div>
 
@@ -1209,7 +1280,7 @@ function buildCard(s) {
       <span class="session-name">\${displayName}</span>
       \${s.activity === 'idle'
         ? '<span class="your-turn-badge"><span class="your-turn-dot"></span>YOUR TURN</span>'
-        : \`<span class="activity-badge">\${label}</span>\`
+        : \`<span class="activity-badge"><span class="activity-dot"></span>\${label}</span>\`
       }
     </div>
     <div class="stats-grid">
@@ -1239,15 +1310,11 @@ function buildCard(s) {
       </div>
       <div class="stat-row">
         <span class="stat-label">In</span>
-        <span class="stat-value">\${fmtTokens(s.inputTokens)}</span>
+        <span class="stat-value">\${fmtTokens(s.lastInputTokens)}<span class="stat-dim"> / \${fmtTokens(s.inputTokens)}</span></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Out</span>
-        <span class="stat-value">\${fmtTokens(s.outputTokens)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Cache</span>
-        <span class="stat-value">\${fmtTokens(s.cacheTokens)}</span>
+        <span class="stat-value">\${fmtTokens(s.lastOutputTokens)}<span class="stat-dim"> / \${fmtTokens(s.outputTokens)}</span></span>
       </div>
       <div class="stat-row">
         <span class="stat-label">Branch</span>
@@ -1306,7 +1373,18 @@ function renderSessions(sessions) {
   if (sorted.length > 0) {
     const s = sorted[0];
     const txt = document.getElementById('robot-bar-text');
-    if (txt) txt.textContent = s.lastAction || ACTIVITY_LABELS[s.activity] || 'Idle';
+    const isWorking = ACTIVE_STATES.has(s.activity);
+    if (txt) {
+      const raw = isWorking && s.lastAction ? s.lastAction : (ACTIVITY_LABELS[s.activity] || 'Idle');
+      const spaceIdx = raw.indexOf(' ');
+      if (spaceIdx > 0 && isWorking) {
+        const verb = raw.slice(0, spaceIdx);
+        const target = raw.slice(spaceIdx + 1);
+        txt.innerHTML = verb + ' <span class="action-target">' + target.replace(/</g, '&lt;') + '</span>';
+      } else {
+        txt.textContent = raw;
+      }
+    }
     // Drive robot bar animation
     const newAnim = pickAnim(s.activity, s.lastAction);
     if (!_animStates['__bar'] || _animStates['__bar'].anim !== newAnim) {
@@ -1446,7 +1524,6 @@ function updateUsageMeters(usage) {
 
   const sessionPct = cu ? cu.sessionPercentage : 0;
   const weekPct    = cu ? cu.weeklyPercentage  : 0;
-  const weekLimit  = cu ? cu.weeklyLimit       : 0;
 
   const todayVal = document.getElementById('usage-today-value');
   const weekVal  = document.getElementById('usage-week-value');
