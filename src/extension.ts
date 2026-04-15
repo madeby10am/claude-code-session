@@ -46,6 +46,9 @@ export function activate(context: vscode.ExtensionContext) {
   envTick();
   const envTimer = setInterval(envTick, 10_000);
 
+  // Fresh data on sidebar open
+  panel.onReady(() => { usageTick(); envTick(); });
+
   context.subscriptions.push({
     dispose: () => {
       clearInterval(usageTimer);

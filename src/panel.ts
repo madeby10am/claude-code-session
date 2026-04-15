@@ -13,6 +13,7 @@ export class Panel implements vscode.WebviewViewProvider {
   private terminalMap = new Map<string, vscode.Terminal>();
   private lastUsage: UsageStats | null = null;
   private lastEnvData: unknown = null;
+  private onReadyCallback: (() => void) | null = null;
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -87,12 +88,11 @@ export class Panel implements vscode.WebviewViewProvider {
       this.sendSessions(this.sessions);
       this.sendProjectInfo();
       this.sendDarkMode();
-      if (this.lastUsage) {
-        this.postMessage({ type: 'usageUpdate', usage: this.lastUsage });
-      }
       if (this.lastEnvData) {
         this.postMessage({ type: 'envData', data: this.lastEnvData });
       }
+      // Trigger fresh usage + env data computation
+      if (this.onReadyCallback) { this.onReadyCallback(); }
     }
     if (msg.type === 'setDarkMode') {
       this.context.workspaceState.update('darkMode', msg.value);
@@ -215,6 +215,10 @@ export class Panel implements vscode.WebviewViewProvider {
     });
   }
 
+  onReady(callback: () => void): void {
+    this.onReadyCallback = callback;
+  }
+
   sendUsage(usage: UsageStats): void {
     this.lastUsage = usage;
     this.postMessage({ type: 'usageUpdate', usage });
@@ -245,32 +249,67 @@ export class Panel implements vscode.WebviewViewProvider {
     let uncommittedCount = 0;
     let ahead = 0;
     let behind = 0;
+    let totalCommits = 0;
+    let lastCommitDate = '';
+    let contributors = 0;
+    let stashCount = 0;
+    let branchCount = 0;
+    let tagCount = 0;
+    let isPrivate: boolean | null = null;
+    let stars = 0;
+    let forks = 0;
+    let openIssues = 0;
+    let openPRs = 0;
+    let lastPushed = '';
+    let repoCreated = '';
+    let diskUsage = '';
+
+    const git = (cmd: string): string => {
+      try { return execSync(cmd, { cwd, encoding: 'utf8', timeout: 5000 }).trim(); }
+      catch { return ''; }
+    };
 
     if (cwd) {
-      try {
-        gitBranch = execSync('git rev-parse --abbrev-ref HEAD', { cwd, encoding: 'utf8' }).trim();
-      } catch { /* not a git repo */ }
-      try {
-        const remote = execSync('git remote get-url origin', { cwd, encoding: 'utf8' }).trim();
+      gitBranch = git('git rev-parse --abbrev-ref HEAD');
+      const remote = git('git remote get-url origin');
+      if (remote) {
         const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
         gitRemote = match ? match[1] : remote;
-      } catch { /* no remote */ }
-      try {
-        gitUser = execSync('git config user.name', { cwd, encoding: 'utf8' }).trim();
-      } catch { /* ignore */ }
-      try {
-        gitLastCommit = execSync('git log -1 --format=%s', { cwd, encoding: 'utf8' }).trim();
-      } catch { /* ignore */ }
-      try {
-        const status = execSync('git status --porcelain', { cwd, encoding: 'utf8' }).trim();
-        uncommittedCount = status ? status.split('\n').length : 0;
-      } catch { /* ignore */ }
-      try {
-        ahead = parseInt(execSync('git rev-list @{u}..HEAD --count', { cwd, encoding: 'utf8' }).trim(), 10) || 0;
-      } catch { /* no upstream */ }
-      try {
-        behind = parseInt(execSync('git rev-list HEAD..@{u} --count', { cwd, encoding: 'utf8' }).trim(), 10) || 0;
-      } catch { /* no upstream */ }
+      }
+      gitUser = git('git config user.name');
+      gitLastCommit = git('git log -1 --format=%s');
+      lastCommitDate = git('git log -1 --format=%ai');
+      const status = git('git status --porcelain');
+      uncommittedCount = status ? status.split('\n').length : 0;
+      ahead = parseInt(git('git rev-list @{u}..HEAD --count'), 10) || 0;
+      behind = parseInt(git('git rev-list HEAD..@{u} --count'), 10) || 0;
+      totalCommits = parseInt(git('git rev-list --count HEAD'), 10) || 0;
+      const contribOut = git('git shortlog -sn --all');
+      contributors = contribOut ? contribOut.split('\n').length : 0;
+      const stashOut = git('git stash list');
+      stashCount = stashOut ? stashOut.split('\n').length : 0;
+      const branchOut = git('git branch -a');
+      branchCount = branchOut ? branchOut.split('\n').length : 0;
+      tagCount = parseInt(git('git tag -l | wc -l'), 10) || 0;
+
+      // GitHub API data via gh CLI
+      const ghJson = git('gh repo view --json isPrivate,stargazerCount,forkCount,pushedAt,createdAt,diskUsage,issues,pullRequests 2>/dev/null');
+      if (ghJson) {
+        try {
+          const gh = JSON.parse(ghJson);
+          isPrivate = gh.isPrivate ?? null;
+          stars = gh.stargazerCount ?? 0;
+          forks = gh.forkCount ?? 0;
+          openIssues = gh.issues?.totalCount ?? 0;
+          openPRs = gh.pullRequests?.totalCount ?? 0;
+          lastPushed = gh.pushedAt ?? '';
+          repoCreated = gh.createdAt ?? '';
+          if (gh.diskUsage) {
+            const kb = gh.diskUsage;
+            diskUsage = kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+          }
+        } catch { /* ignore parse errors */ }
+      }
     }
 
     this.postMessage({
@@ -288,6 +327,20 @@ export class Panel implements vscode.WebviewViewProvider {
         uncommittedCount,
         ahead,
         behind,
+        totalCommits,
+        lastCommitDate,
+        contributors,
+        stashCount,
+        branchCount,
+        tagCount,
+        isPrivate,
+        stars,
+        forks,
+        openIssues,
+        openPRs,
+        lastPushed,
+        repoCreated,
+        diskUsage,
       },
     });
   }
@@ -1125,10 +1178,24 @@ body:not(.dark)::before { opacity: 0.015; }
     <div class="section-header" data-open="true" onclick="toggleSection(this)">Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="git-status-body">
       <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Visibility</span><span class="stat-value" id="git-visibility">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Branches</span><span class="stat-value" id="git-branch-count">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Commits</span><span class="stat-value" id="git-total-commits">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Contributors</span><span class="stat-value" id="git-contributors">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Last Commit</span><span class="stat-value" id="git-last-commit" title="">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Committed</span><span class="stat-value" id="git-last-commit-date">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Last Push</span><span class="stat-value" id="git-last-pushed">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Created</span><span class="stat-value" id="git-created">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Stars</span><span class="stat-value" id="git-stars">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Forks</span><span class="stat-value" id="git-forks">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Issues</span><span class="stat-value" id="git-issues">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">PRs</span><span class="stat-value" id="git-prs">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Tags</span><span class="stat-value" id="git-tags">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Stashes</span><span class="stat-value" id="git-stashes">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Size</span><span class="stat-value" id="git-size">&mdash;</span></div>
     </div>
   </div>
 
@@ -1421,14 +1488,34 @@ window.addEventListener('message', e => {
         gr.textContent = '\\u2014';
       }
     }
-    const gb2 = document.getElementById('git-branch2');
-    const gu = document.getElementById('git-uncommitted');
-    const gab = document.getElementById('git-ahead-behind');
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    const fmtDate = (iso) => {
+      if (!iso) return '\\u2014';
+      const dt = new Date(iso);
+      return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    };
+
+    setEl('git-branch2', d.gitBranch || '\\u2014');
+    setEl('git-uncommitted', d.uncommittedCount > 0 ? d.uncommittedCount + ' uncommitted' : 'Clean');
+    setEl('git-ahead-behind', '\\u2191' + (d.ahead || 0) + ' \\u2193' + (d.behind || 0));
     const glc = document.getElementById('git-last-commit');
-    if (gb2) gb2.textContent = d.gitBranch || '\\u2014';
-    if (gu) gu.textContent = d.uncommittedCount > 0 ? d.uncommittedCount + ' uncommitted' : 'Clean';
-    if (gab) gab.textContent = '\\u2191' + (d.ahead || 0) + ' \\u2193' + (d.behind || 0);
     if (glc) { glc.textContent = d.gitLastCommit || '\\u2014'; glc.title = d.gitLastCommit || ''; }
+    setEl('git-last-commit-date', fmtDate(d.lastCommitDate));
+    setEl('git-total-commits', d.totalCommits > 0 ? String(d.totalCommits) : '\\u2014');
+    setEl('git-contributors', d.contributors > 0 ? String(d.contributors) : '\\u2014');
+    setEl('git-branch-count', d.branchCount > 0 ? String(d.branchCount) : '\\u2014');
+    setEl('git-tags', d.tagCount > 0 ? String(d.tagCount) : '0');
+    setEl('git-stashes', d.stashCount > 0 ? String(d.stashCount) : '0');
+
+    // GitHub API fields
+    setEl('git-visibility', d.isPrivate === true ? 'Private' : d.isPrivate === false ? 'Public' : '\\u2014');
+    setEl('git-stars', d.stars != null ? String(d.stars) : '\\u2014');
+    setEl('git-forks', d.forks != null ? String(d.forks) : '\\u2014');
+    setEl('git-issues', d.openIssues != null ? String(d.openIssues) : '\\u2014');
+    setEl('git-prs', d.openPRs != null ? String(d.openPRs) : '\\u2014');
+    setEl('git-last-pushed', fmtDate(d.lastPushed));
+    setEl('git-created', fmtDate(d.repoCreated));
+    setEl('git-size', d.diskUsage || '\\u2014');
   }
 
   if (msg.type === 'envData') {
