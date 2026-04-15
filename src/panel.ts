@@ -83,7 +83,7 @@ export class Panel implements vscode.WebviewViewProvider {
     this.registerListeners();
   }
 
-  private handleWebviewMessage(msg: { type: string; value?: boolean; sessionId?: string; path?: string; url?: string; file?: string }): void {
+  private handleWebviewMessage(msg: { type: string; value?: boolean; sessionId?: string; path?: string; url?: string; file?: string; name?: string }): void {
     if (msg.type === 'ready') {
       this.sendSessions(this.sessions);
       this.sendProjectInfo();
@@ -131,6 +131,18 @@ export class Panel implements vscode.WebviewViewProvider {
     }
     if (msg.type === 'openFolder' && msg.path) {
       vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(msg.path));
+    }
+    if (msg.type === 'inputSkill' && msg.name) {
+      // Find the active Claude terminal and type the skill command
+      const active = vscode.window.activeTerminal;
+      if (active) {
+        active.sendText(msg.name, false);
+        active.show();
+      } else {
+        // Fallback: copy to clipboard
+        vscode.env.clipboard.writeText(msg.name);
+        vscode.window.showInformationMessage(`Copied ${msg.name} to clipboard`);
+      }
     }
     if (msg.type === 'openSession' && msg.sessionId) {
       this.focusSession(msg.sessionId);
@@ -485,7 +497,7 @@ body::before {
   transition: opacity 0.2s;
 }
 .section-header {
-  padding: 12px 20px 8px;
+  padding: 12px 14px 8px 12px;
   font-size: 10px;
   font-weight: 700;
   color: var(--text-bright);
@@ -500,9 +512,16 @@ body::before {
   transition: color 0.15s;
 }
 .section-header:hover { color: var(--accent); }
+.section-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-bright);
+}
 .section-chevron {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 900;
+  color: var(--text-bright);
   transition: transform 0.2s, color 0.15s;
   margin-left: auto;
 }
@@ -527,21 +546,14 @@ body::before {
 .section-header[data-open="false"] .section-chevron { transform: rotate(-90deg); }
 .section-header[data-open="false"] + .section-body { display: none; }
 
-/* Drag handle */
+/* Drag handle hidden — icons replace it */
 .section[draggable="true"] .section-header::before {
-  content: '\\2261';
-  margin-right: 6px;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: grab;
-  flex-shrink: 0;
-  transition: color 0.15s;
+  display: none;
 }
-.section[draggable="true"]:hover .section-header::before { color: var(--text-dim); }
 .section.dragging { opacity: 0.3; }
 .section.drag-over { border-top: 2px solid var(--accent); }
 .section-body {
-  padding: 0 20px 14px;
+  padding: 0 14px 14px 12px;
 }
 
 /* ===== Active Sessions (hero) ===== */
@@ -584,6 +596,7 @@ body::before {
 .session-card[data-activity="thinking"]::before   { opacity: 1; background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
 .session-card[data-activity="responding"]::before { opacity: 1; background: linear-gradient(135deg, #10b981, #06b6d4); }
 .session-card[data-activity="idle"]::before       { opacity: 1; background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.session-card[data-activity="sleeping"]::before   { opacity: 1; background: linear-gradient(135deg, #4b5563, #374151); }
 
 /* Outer glow — pulsing */
 .session-card[data-activity="tooling"]    { animation: glowTooling 2s ease-in-out infinite; }
@@ -591,6 +604,7 @@ body::before {
 .session-card[data-activity="thinking"]   { animation: glowThinking 2s ease-in-out infinite; }
 .session-card[data-activity="responding"] { animation: glowResponding 2s ease-in-out infinite; }
 .session-card[data-activity="idle"]       { animation: glowIdle 2s ease-in-out infinite; }
+.session-card[data-activity="sleeping"]   { animation: glowSleeping 3s ease-in-out infinite; }
 
 @keyframes glowTooling {
   0%, 100% { box-shadow: none; }
@@ -611,6 +625,10 @@ body::before {
 @keyframes glowIdle {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(245,158,11,0.3), 0 0 40px -5px rgba(239,68,68,0.15); }
+}
+@keyframes glowSleeping {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 20px -2px rgba(75,85,99,0.25), 0 0 40px -5px rgba(55,65,81,0.12); }
 }
 
 .card-top {
@@ -701,11 +719,23 @@ body::before {
 }
 .stat-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: baseline;
   gap: 6px;
   min-width: 0;
 }
+.stat-row::after {
+  content: '';
+  order: 1;
+  flex: 1;
+  border-bottom: 1px dotted var(--text-muted);
+  margin: 0 4px;
+  min-width: 8px;
+  position: relative;
+  top: -3px;
+}
+.stat-row .stat-label { order: 0; }
+.stat-row .stat-value { order: 2; }
 .stat-label {
   font-size: 9px;
   color: var(--text-dim);
@@ -713,6 +743,11 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   flex-shrink: 0;
+}
+
+/* Git status rows extra padding */
+#git-status-body .stat-row {
+  padding: 3px 0;
 }
 .stat-value {
   font-size: 11px;
@@ -849,6 +884,24 @@ body:not(.dark) .time-marker-trail { background: linear-gradient(90deg, transpar
   transition: color 0.15s, border-color 0.15s;
 }
 .card-refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
+.extra-usage-badge {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #ff6b35, #ff4444);
+  color: #fff;
+  text-transform: uppercase;
+  animation: extra-pulse 2s ease-in-out infinite;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+@keyframes extra-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px rgba(255,68,68,0.4); }
+  50% { opacity: 0.85; box-shadow: 0 0 8px rgba(255,107,53,0.6); }
+}
 .session-time-item {
   font-size: 9px;
   color: var(--text-dim);
@@ -969,7 +1022,9 @@ body:not(.dark) .time-marker-trail { background: linear-gradient(90deg, transpar
 .skill-item {
   padding: 5px 0;
   border-bottom: 1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
 }
+.skill-item:hover { opacity: 0.8; }
 .skill-item:last-child { border-bottom: none; }
 .skill-name {
   font-size: 11px;
@@ -1057,14 +1112,14 @@ body:not(.dark) .time-marker-trail { background: linear-gradient(90deg, transpar
   top: 2px; left: 2px;
   width: 12px; height: 12px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--text-bright);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 0 6px rgba(34,211,238,0.4);
+  box-shadow: none;
 }
 .dark-toggle[data-on="true"]::after {
   transform: translateX(14px);
 }
-.dark-toggle:hover { border-color: var(--accent); }
+.dark-toggle:hover { border-color: var(--text-bright); }
 .toggle-sun { color: var(--amber); }
 .toggle-moon { color: var(--text-muted); }
 .dark-toggle[data-on="true"] .toggle-sun { color: var(--text-muted); }
@@ -1119,8 +1174,8 @@ body:not(.dark)::before { opacity: 0.015; }
 .robot-bar {
   display: flex;
   align-items: center;
-  padding: 3px 14px 5px;
-  gap: 10px;
+  padding: 3px 6px 5px 11px;
+  gap: 0;
   border-bottom: 1px solid var(--border);
   background: rgba(255,255,255,0.02);
 }
@@ -1146,6 +1201,7 @@ body:not(.dark)::before { opacity: 0.015; }
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  flex: 1;
 }
 .robot-bar-text .action-target {
   color: var(--text-bright);
@@ -1185,7 +1241,7 @@ body:not(.dark)::before { opacity: 0.015; }
   <!-- SESSIONS -->
   <div class="section" id="sessions-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)">
-      Sessions
+      <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Sessions
       <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
     </div>
     <div class="section-body" id="session-list">
@@ -1199,7 +1255,7 @@ body:not(.dark)::before { opacity: 0.015; }
   <!-- USAGE METERS -->
   <div class="section" id="usage-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)">
-      Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
+      <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/></svg>Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
     </div>
     <div class="section-body">
       <div class="usage-card">
@@ -1235,7 +1291,7 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- GIT STATUS -->
   <div class="section" id="git-status-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="git-status-body">
       <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Visibility</span><span class="stat-value" id="git-visibility">&mdash;</span></div>
@@ -1261,7 +1317,7 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- RECENT FILES -->
   <div class="section" id="recent-files-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Recent Files <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Recent Files <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="recent-files-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
@@ -1269,7 +1325,7 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- SESSION HISTORY -->
   <div class="section" id="session-history-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="session-history-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
@@ -1277,7 +1333,7 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- MCP SERVERS -->
   <div class="section" id="mcp-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">MCP Servers <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>MCP Servers <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body" id="mcp-list">
       <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
@@ -1285,7 +1341,7 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- SKILLS -->
   <div class="section" id="skills-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body">
       <input type="text" id="skills-search" placeholder="Search skills..." style="width:100%;padding:4px 8px;margin-bottom:6px;font-size:11px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa;color:#333;font-family:inherit;outline:none;">
       <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:8px;">
@@ -1442,10 +1498,6 @@ function buildCard(s) {
       <div class="stat-row">
         <span class="stat-label">Out</span>
         <span class="stat-value">\${fmtTokens(s.lastOutputTokens)}<span class="stat-dim"> / \${fmtTokens(s.outputTokens)}</span></span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Branch</span>
-        <span class="stat-value" title="\${s.gitBranch || ''}">\${s.gitBranch || '\\u2014'}</span>
       </div>
       <div class="context-bar-wrap">
         <div class="context-bar-label">
@@ -1703,14 +1755,21 @@ function updateUsageMeters(usage) {
 
   const planEl = document.getElementById('usage-plan-label');
 
+  const isExtra = !!(usage.overageInUse) || sessPct >= 100 || weekPct >= 100;
+
   if (usage.live) {
     if (sessVal) sessVal.innerHTML = (sessReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + sessReset + '</span> ' : '') + sessPct + '%';
     if (weekVal) weekVal.innerHTML = (weekReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + weekReset + '</span> ' : '') + weekPct + '%';
-    if (planEl) planEl.textContent = usage.planTier ? 'Claude ' + usage.planTier : '';
+    if (planEl) {
+      var label = usage.planTier ? 'Claude ' + usage.planTier : '';
+      planEl.innerHTML = isExtra
+        ? label + ' <span class="extra-usage-badge">EXTRA USAGE</span>'
+        : label;
+    }
   } else {
     if (sessVal) sessVal.textContent = 'No credentials found';
     if (weekVal) weekVal.textContent = '';
-    if (planEl) planEl.textContent = '';
+    if (planEl) planEl.innerHTML = '';
   }
 
   const sessBar = document.getElementById('usage-today-bar');
@@ -1943,7 +2002,7 @@ function renderSkills() {
     const desc = s.description
       ? '<div class="skill-desc">' + s.description + '</div>'
       : '';
-    return '<div class="skill-item" data-source="' + s.source + '"><div><span class="skill-name">/' + s.name + '</span>' + badge + '</div>' + desc + '</div>';
+    return '<div class="skill-item" data-source="' + s.source + '" onclick="vscodeApi.postMessage({type:\\'inputSkill\\',name:\\'/' + s.name + '\\'})"><div><span class="skill-name">/' + s.name + '</span>' + badge + '</div>' + desc + '</div>';
   }).join('');
 }
 

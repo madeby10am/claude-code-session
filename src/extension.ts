@@ -42,6 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
       recentSessions: sessionManager!.getRecentSessions(),
       skills: sessionManager!.getSkills(),
     });
+    panel!.sendProjectInfo();
   };
   envTick();
   const envTimer = setInterval(envTick, 10_000);

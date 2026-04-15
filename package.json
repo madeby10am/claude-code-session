@@ -71,7 +71,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.1.0/out/ && cp package.json ~/.vscode/extensions/local.claude-code-session-0.1.0/package.json",
+    "deploy": "tsc -p ./ && for d in ~/.vscode/extensions/local.claude-code-session-*/; do cp out/panel.js out/extension.js out/sessionManager.js \"$d/out/\" && cp package.json \"$d/package.json\"; done",
     "watch": "tsc -watch -p ./",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run"

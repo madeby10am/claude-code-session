@@ -52,6 +52,7 @@ export interface UsageStats {
   weeklyWindowMs:   number;
   live:             boolean;
   planTier:         string;  // e.g. "Max 5x", "Pro", "Free"
+  overageInUse:     boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -380,7 +381,7 @@ const https=require('https');
 const body=JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'h'}]});
 const req=https.request({hostname:'api.anthropic.com',path:'/v1/messages',method:'POST',headers:{'x-api-key':'${token}','anthropic-version':'2023-06-01','Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
   const h=res.headers;
-  const out={sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10)};
+  const out={sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10),ov:h['anthropic-ratelimit-unified-overage-in-use']==='true'};
   let d='';res.on('data',c=>d+=c);res.on('end',()=>console.log(JSON.stringify(out)));
 });
 req.on('error',()=>console.log('{}'));
@@ -401,6 +402,7 @@ req.write(body);req.end();
           weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
           live:            true,
           planTier,
+          overageInUse:    d.ov === true,
         };
       }
     } catch { /* credentials or API unavailable */ }
@@ -414,6 +416,7 @@ req.write(body);req.end();
       weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
       live: false,
       planTier: '',
+      overageInUse: false,
     };
   }
 
