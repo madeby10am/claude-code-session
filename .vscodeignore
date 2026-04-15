@@ -4,10 +4,23 @@ src/**
 test/**
 scripts/**
 out-scripts/**
+docs/**
+.claude/**
+.superpowers/**
 **/*.ts
 **/*.map
 tsconfig*.json
 vitest.config.ts
 .gitignore
+.git/**
 package-lock.json
-docs/**
+CLAUDE.md
+*.vsix
+out/activityMonitor.js
+out/claudeWatcher.js
+out/stateManager.js
+assets/Robot Character/Back/**
+assets/Robot Character/Left/**
+assets/Robot Character/Right/**
+assets/Robot Character/Front/**
+assets/Robot Character/Robot.aseprite

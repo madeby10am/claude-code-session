@@ -1,17 +1,38 @@
 {
   "name": "claude-code-session",
-  "publisher": "local",
+  "publisher": "madeby10am",
   "displayName": "Claude Code Session",
-  "description": "Monitor Claude Code sessions with a pixel art companion",
+  "description": "Monitor Claude Code sessions with a pixel art companion -- live activity badges, gradient border glows, token tracking, and an animated robot sidebar.",
   "version": "0.0.1",
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/madeby10am/claude-code-session"
+  },
+  "homepage": "https://github.com/madeby10am/claude-code-session#readme",
+  "bugs": {
+    "url": "https://github.com/madeby10am/claude-code-session/issues"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "ai",
+    "session",
+    "monitor",
+    "pixel-art",
+    "sidebar"
+  ],
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
+    "Visualization",
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
