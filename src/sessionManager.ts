@@ -44,18 +44,14 @@ export interface SessionState {
 }
 
 export interface UsageStats {
-  today: { outputTokens: number };
-  week:  { outputTokens: number };
-  claudeUsage: {
-    sessionPercentage: number;
-    sessionTokensUsed: number;
-    sessionLimit: number;
-    sessionResetTime: number;
-    weeklyPercentage: number;
-    weeklyTokensUsed: number;
-    weeklyLimit: number;
-    weeklyResetTime: number;
-  } | null;
+  sessionPct:       number;
+  weeklyPct:        number;
+  sessionResetMs:   number;
+  weeklyResetMs:    number;
+  sessionWindowMs:  number;
+  weeklyWindowMs:   number;
+  live:             boolean;
+  planTier:         string;  // e.g. "Max 5x", "Pro", "Free"
 }
 
 // ---------------------------------------------------------------------------
@@ -347,93 +343,78 @@ export class SessionManager {
     return best?.sessionId;
   }
 
+  /**
+   * Fetch live usage data by making a minimal API call to read rate limit headers.
+   * Uses the OAuth token from the macOS Keychain (stored by Claude Code CLI).
+   */
   computeUsageFromLogs(): UsageStats {
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const weekStart  = todayStart - 6 * 24 * 60 * 60 * 1000;
-
-    let todayOut = 0;
-    let weekOut  = 0;
-
     try {
-      const slugs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
-      for (const slug of slugs) {
-        const slugDir = path.join(CLAUDE_PROJECTS_DIR, slug);
-        try {
-          if (!fs.statSync(slugDir).isDirectory()) { continue; }
-        } catch { continue; }
-
-        let files: string[];
-        try { files = fs.readdirSync(slugDir).filter(f => f.endsWith('.jsonl')); }
-        catch { continue; }
-
-        for (const file of files) {
-          const filePath = path.join(slugDir, file);
-          try {
-            const mtime = fs.statSync(filePath).mtimeMs;
-            if (mtime < weekStart) { continue; } // skip old files
-
-            const content = fs.readFileSync(filePath, 'utf-8');
-            for (const line of content.split('\n')) {
-              if (!line.includes('"output_tokens"')) { continue; }
-              try {
-                const entry = JSON.parse(line);
-                if (entry.type !== 'assistant' || !entry.message?.usage?.output_tokens) { continue; }
-                const ts = entry.timestamp ? new Date(entry.timestamp).getTime() : mtime;
-                const out = entry.message.usage.output_tokens as number;
-                if (ts >= todayStart) { todayOut += out; }
-                if (ts >= weekStart)  { weekOut  += out; }
-              } catch { /* skip unparseable lines */ }
-            }
-          } catch { continue; }
-        }
-      }
-    } catch { /* projects dir missing */ }
-
-    return {
-      today: { outputTokens: todayOut },
-      week:  { outputTokens: weekOut },
-      claudeUsage: this.readClaudeUsagePlist(),
-    };
-  }
-
-  private readClaudeUsagePlist(): UsageStats['claudeUsage'] {
-    try {
-      const plistPath = path.join(
-        os.homedir(), 'Library', 'Preferences',
-        'HamedElfayome.Claude-Usage.plist'
-      );
-      if (!fs.existsSync(plistPath)) { return null; }
-
-      // Convert binary plist to XML, then parse profiles_v3 data
       const { execFileSync } = require('child_process');
+
+      // Read OAuth token from macOS Keychain
       const raw = execFileSync(
-        'python3',
-        ['-c', `import plistlib,json,sys
-with open(sys.argv[1],'rb') as f:
-    p=plistlib.load(f)
-profiles=json.loads(p.get('profiles_v3',b'[]'))
-for prof in profiles:
-    cu=prof.get('claudeUsage')
-    if cu:
-        print(json.dumps(cu))
-        sys.exit(0)`, plistPath],
+        'security',
+        ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
         { encoding: 'utf8', timeout: 3000 }
       ).trim();
+      if (!raw) { throw new Error('no credentials'); }
+      const creds = JSON.parse(raw);
+      const oauth = creds?.claudeAiOauth;
+      const token = oauth?.accessToken;
+      if (!token) { throw new Error('no token'); }
 
-      if (!raw) { return null; }
-      const cu = JSON.parse(raw);
-      return {
-        sessionPercentage: cu.sessionPercentage ?? 0,
-        sessionTokensUsed: cu.sessionTokensUsed ?? 0,
-        sessionLimit:      cu.sessionLimit ?? 0,
-        sessionResetTime:  cu.sessionResetTime ?? 0,
-        weeklyPercentage:  cu.weeklyPercentage ?? 0,
-        weeklyTokensUsed:  cu.weeklyTokensUsed ?? 0,
-        weeklyLimit:       cu.weeklyLimit ?? 0,
-        weeklyResetTime:   cu.weeklyResetTime ?? 0,
-      };
-    } catch { return null; }
+      // Extract plan tier
+      const tierRaw = (oauth?.rateLimitTier || '') as string;
+      const sub = (oauth?.subscriptionType || '') as string;
+      let planTier = 'Free';
+      if (tierRaw.includes('max_20x'))     planTier = 'Max 20x';
+      else if (tierRaw.includes('max_5x')) planTier = 'Max 5x';
+      else if (tierRaw.includes('max'))    planTier = 'Max';
+      else if (sub === 'pro')              planTier = 'Pro';
+
+      // Make a minimal 1-token Haiku call to get rate limit headers
+      const result = execFileSync(
+        'node',
+        ['-e', `
+const https=require('https');
+const body=JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'h'}]});
+const req=https.request({hostname:'api.anthropic.com',path:'/v1/messages',method:'POST',headers:{'x-api-key':'${token}','anthropic-version':'2023-06-01','Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
+  const h=res.headers;
+  const out={sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10)};
+  let d='';res.on('data',c=>d+=c);res.on('end',()=>console.log(JSON.stringify(out)));
+});
+req.on('error',()=>console.log('{}'));
+req.write(body);req.end();
+`],
+        { encoding: 'utf8', timeout: 10000 }
+      ).trim();
+
+      if (result) {
+        const d = JSON.parse(result);
+        const nowSec = Math.floor(Date.now() / 1000);
+        return {
+          sessionPct:      Math.round(d.sp * 100),
+          weeklyPct:       Math.round(d.wp * 100),
+          sessionResetMs:  Math.max(0, (d.sr - nowSec) * 1000),
+          weeklyResetMs:   Math.max(0, (d.wr - nowSec) * 1000),
+          sessionWindowMs: 5 * 60 * 60 * 1000,
+          weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
+          live:            true,
+          planTier,
+        };
+      }
+    } catch { /* credentials or API unavailable */ }
+
+    return {
+      sessionPct: 0,
+      weeklyPct:  0,
+      sessionResetMs: 0,
+      weeklyResetMs:  0,
+      sessionWindowMs: 5 * 60 * 60 * 1000,
+      weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
+      live: false,
+      planTier: '',
+    };
   }
 
   dispose(): void {

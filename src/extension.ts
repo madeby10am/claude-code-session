@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
     panel!.sendUsage(usage);
   };
   usageTick();
-  const usageTimer = setInterval(usageTick, 30_000);
+  const usageTimer = setInterval(usageTick, 60_000);
 
   // Send environment data every 10s
   const envTick = () => {

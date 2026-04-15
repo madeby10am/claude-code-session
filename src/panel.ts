@@ -91,7 +91,16 @@ export class Panel implements vscode.WebviewViewProvider {
       if (this.lastEnvData) {
         this.postMessage({ type: 'envData', data: this.lastEnvData });
       }
-      // Trigger fresh usage + env data computation
+      // Send cached usage immediately so bars don't flash 0%
+      if (this.lastUsage) {
+        this.postMessage({ type: 'usageUpdate', usage: this.lastUsage });
+      }
+      // Then trigger fresh fetch on top
+      if (this.onReadyCallback) { this.onReadyCallback(); }
+    }
+    if (msg.type === 'refreshUsage') {
+      this.sendSessions(this.sessions);
+      this.sendProjectInfo();
       if (this.onReadyCallback) { this.onReadyCallback(); }
     }
     if (msg.type === 'setDarkMode') {
@@ -508,7 +517,7 @@ body::before {
   transition: color 0.15s, transform 0.15s;
 }
 .section-pin:hover { color: var(--text-dim); }
-.section-pin[data-pinned="true"] { color: var(--accent); transform: rotate(-45deg); }
+.section-pin[data-pinned="true"] { color: var(--text-bright); transform: rotate(-45deg); }
 
 .section[data-pinned="true"] {
   position: sticky;
@@ -561,14 +570,13 @@ body::before {
   position: absolute;
   inset: 2px;
   border-radius: 8px;
-  background: var(--bg-card);
-  backdrop-filter: blur(8px);
+  background: var(--bg);
   z-index: 0;
   transition: background 0.3s;
 }
 .session-card > * { position: relative; z-index: 1; }
 .session-card:last-child { margin-bottom: 0; }
-.session-card:hover::after { background: var(--bg-card-hover); }
+.session-card:hover::after { background: var(--bg); }
 
 /* Activity glow — solid gradient ring matching badge colors */
 .session-card[data-activity="tooling"]::before    { opacity: 1; background: linear-gradient(135deg, #3b82f6, #6366f1); }
@@ -735,7 +743,7 @@ body::before {
 }
 .context-bar-track {
   width: 100%;
-  height: 4px;
+  height: 5px;
   background: rgba(255,255,255,0.1);
   border-radius: 2px;
   overflow: hidden;
@@ -751,6 +759,31 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
 .context-bar-fill[data-level="yellow"]       { background: linear-gradient(90deg, #84cc16, #eab308); }
 .context-bar-fill[data-level="orange"]       { background: linear-gradient(90deg, #eab308, #f59e0b); }
 .context-bar-fill[data-level="red"]          { background: linear-gradient(90deg, #f59e0b, #ef4444); }
+
+/* Time marker on usage bars */
+.time-marker {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #e6edf3;
+  border-radius: 1px;
+  transition: left 1s ease;
+  z-index: 2;
+}
+.time-marker-trail {
+  position: absolute;
+  top: 0;
+  width: 24px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5));
+  border-radius: 1px;
+  transition: left 1s ease;
+  z-index: 1;
+}
+body:not(.dark) .time-marker { background: #111827; }
+body:not(.dark) .time-marker-trail { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.4)); }
+
 
 /* Empty state */
 .empty-state {
@@ -803,6 +836,19 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
   padding-top: 6px;
   border-top: 1px solid var(--border);
 }
+.card-refresh-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.card-refresh-btn:hover { color: var(--accent); border-color: var(--accent); }
 .session-time-item {
   font-size: 9px;
   color: var(--text-dim);
@@ -952,6 +998,12 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
 .skill-badge-plugin { background: rgba(255,255,255,0.06); color: var(--text-dim); }
 
 /* ===== Usage meters ===== */
+.usage-card {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px 6px;
+}
 .usage-meter { }
 .usage-meter-label {
   display: flex;
@@ -1134,11 +1186,7 @@ body:not(.dark)::before { opacity: 0.015; }
   <div class="section" id="sessions-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)">
       Sessions
-      <span style="display:flex;align-items:center;gap:6px;">
-        <button id="new-session-btn" title="New session" style="background:none;border:1px solid var(--vscode-widget-border, #3c3c3c);border-radius:4px;color:var(--vscode-descriptionForeground, #8b949e);cursor:pointer;font-size:13px;line-height:1;padding:2px 7px;" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
-        <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-        <span class="section-chevron">&#x25BE;</span>
-      </span>
+      <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
     </div>
     <div class="section-body" id="session-list">
       <div class="empty-state" id="empty-msg">
@@ -1150,24 +1198,36 @@ body:not(.dark)::before { opacity: 0.015; }
 
   <!-- USAGE METERS -->
   <div class="section" id="usage-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">
+      Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
+    </div>
     <div class="section-body">
-      <div class="usage-meter">
-        <div class="usage-meter-label">
-          <span class="stat-label">Session</span>
-          <span class="stat-value" id="usage-today-value">&mdash;</span>
+      <div class="usage-card">
+        <div class="usage-meter">
+          <div class="usage-meter-label">
+            <span class="stat-label">Session</span>
+            <span class="stat-value" id="usage-today-value">&mdash;</span>
+          </div>
+          <div class="context-bar-track" style="position:relative;overflow:visible;">
+            <div class="context-bar-fill" id="usage-today-bar" data-level="green" style="width:0%"></div>
+            <div class="time-marker-trail" id="usage-today-trail"></div>
+            <div class="time-marker" id="usage-today-marker"></div>
+          </div>
         </div>
-        <div class="context-bar-track">
-          <div class="context-bar-fill" id="usage-today-bar" data-level="green" style="width:0%"></div>
+        <div class="usage-meter" style="margin-top:8px;">
+          <div class="usage-meter-label">
+            <span class="stat-label">This Week</span>
+            <span class="stat-value" id="usage-week-value">&mdash;</span>
+          </div>
+          <div class="context-bar-track" style="position:relative;overflow:visible;">
+            <div class="context-bar-fill" id="usage-week-bar" data-level="green" style="width:0%"></div>
+            <div class="time-marker-trail" id="usage-week-trail"></div>
+            <div class="time-marker" id="usage-week-marker"></div>
+          </div>
         </div>
-      </div>
-      <div class="usage-meter" style="margin-top:8px;">
-        <div class="usage-meter-label">
-          <span class="stat-label">This Week</span>
-          <span class="stat-value" id="usage-week-value">&mdash;</span>
-        </div>
-        <div class="context-bar-track">
-          <div class="context-bar-fill" id="usage-week-bar" data-level="green" style="width:0%"></div>
+        <div class="session-time">
+          <span class="stat-value" id="usage-plan-label" style="font-size:10px;">&mdash;</span>
+          <button class="card-refresh-btn" title="Refresh all" onclick="event.stopPropagation();refreshUsage();">&#x21bb;</button>
         </div>
       </div>
     </div>
@@ -1288,13 +1348,13 @@ function fmtTime(ts) {
 function fmtDuration(startTs) {
   if (!startTs) return '\\u2014';
   const elapsed = Date.now() - startTs;
-  const secs = Math.floor(elapsed / 1000);
-  if (secs < 60) return secs + 's';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return mins + 'm';
-  const hrs = Math.floor(mins / 60);
-  const remMins = mins % 60;
-  return hrs + 'h ' + remMins + 'm';
+  const totalSecs = Math.floor(elapsed / 1000);
+  const hrs = Math.floor(totalSecs / 3600);
+  const mins = Math.floor((totalSecs % 3600) / 60);
+  const secs = totalSecs % 60;
+  if (hrs > 0) return hrs + 'h ' + mins.toString().padStart(2, '0') + 'm ' + secs.toString().padStart(2, '0') + 's';
+  if (mins > 0) return mins + 'm ' + secs.toString().padStart(2, '0') + 's';
+  return secs + 's';
 }
 
 function fmtAgo(ts) {
@@ -1401,6 +1461,7 @@ function buildCard(s) {
       <span class="session-time-item">Started \${fmtTime(s.startedAt)}</span>
       <span class="session-time-item">&middot;</span>
       <span class="session-time-item" data-duration-start="\${s.startedAt}">\${fmtDuration(s.startedAt)}</span>
+      <button class="card-refresh-btn" title="New session" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
     </div>
   \`;
 
@@ -1433,6 +1494,9 @@ function renderSessions(sessions) {
     list.appendChild(buildCard(s));
   }
 
+  // Re-apply cached usage data to the newly built card
+  if (_lastUsage) updateUsageMeters(_lastUsage);
+
   // Update per-card animations
   updateAllAnimations(current);
 
@@ -1442,7 +1506,8 @@ function renderSessions(sessions) {
     const txt = document.getElementById('robot-bar-text');
     const isWorking = ACTIVE_STATES.has(s.activity);
     if (txt) {
-      const raw = isWorking && s.lastAction ? s.lastAction : (ACTIVITY_LABELS[s.activity] || 'Idle');
+      const showAction = isWorking && s.activity !== 'thinking' && s.lastAction;
+      const raw = showAction ? s.lastAction : (ACTIVITY_LABELS[s.activity] || 'Idle');
       const spaceIdx = raw.indexOf(' ');
       if (spaceIdx > 0 && isWorking) {
         const verb = raw.slice(0, spaceIdx);
@@ -1574,62 +1639,110 @@ window.addEventListener('message', e => {
   }
 });
 
-// ─── Duration ticker — updates elapsed time every 30s ──────────────────────
+// ─── Duration ticker — updates elapsed time every 1s ───────────────────────
 setInterval(() => {
   const els = document.querySelectorAll('[data-duration-start]');
   els.forEach(el => {
     const start = parseInt(el.dataset.durationStart, 10);
     if (start) el.textContent = fmtDuration(start);
   });
-}, 30000);
+}, 1000);
+
+// ─── Usage refresh ─────────────────────────────────────────────────────────
+function refreshUsage() {
+  // Reset bars and markers to 0, force reflow, then fetch — gives the "fill up" animation
+  const sessBar = document.getElementById('usage-today-bar');
+  const weekBar = document.getElementById('usage-week-bar');
+  const sessMarker = document.getElementById('usage-today-marker');
+  const sessTrail  = document.getElementById('usage-today-trail');
+  const weekMarker = document.getElementById('usage-week-marker');
+  const weekTrail  = document.getElementById('usage-week-trail');
+
+  // Disable transitions, snap to 0
+  [sessBar, weekBar].forEach(el => { if (el) { el.style.transition = 'none'; el.style.width = '0%'; } });
+  [sessMarker, weekMarker].forEach(el => { if (el) { el.style.transition = 'none'; el.style.left = '0%'; } });
+  [sessTrail, weekTrail].forEach(el => { if (el) { el.style.transition = 'none'; el.style.left = '0px'; } });
+
+  // Force reflow so the browser registers 0% before we re-enable transitions
+  if (sessBar) sessBar.offsetWidth;
+
+  // Re-enable transitions
+  requestAnimationFrame(() => {
+    [sessBar, weekBar].forEach(el => { if (el) el.style.transition = ''; });
+    [sessMarker, weekMarker, sessTrail, weekTrail].forEach(el => { if (el) el.style.transition = ''; });
+    vscodeApi.postMessage({ type: 'refreshUsage' });
+  });
+}
 
 // ─── Usage meters ──────────────────────────────────────────────────────────
-// Apple epoch: 2001-01-01T00:00:00Z
-const APPLE_EPOCH = 978307200000;
-
-function fmtResetTime(appleTs) {
-  if (!appleTs) return '';
-  const resetMs = appleTs * 1000 + APPLE_EPOCH;
-  const now = Date.now();
-  const diff = resetMs - now;
-  if (diff <= 0) return 'resetting soon';
-  const mins = Math.floor(diff / 60000);
+function fmtResetIn(ms) {
+  if (ms <= 0) return '';
+  const mins = Math.floor(ms / 60000);
   if (mins < 60) return 'resets in ' + mins + 'm';
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return 'resets in ' + hrs + 'h';
-  const d = new Date(resetMs);
-  const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const h = d.getHours();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
-  return 'resets ' + days[d.getDay()] + ' ' + h12 + ampm;
+  if (hrs < 24) return 'resets in ' + hrs + 'h ' + (mins % 60) + 'm';
+  return 'resets in ' + Math.floor(hrs / 24) + 'd';
 }
+
+// Store usage data for time marker animation
+let _lastUsage = null;
 
 function updateUsageMeters(usage) {
   if (!usage) return;
-  const cu = usage.claudeUsage;
+  _lastUsage = usage;
+  _lastUsageTime = Date.now();
 
-  const sessionPct = cu ? cu.sessionPercentage : 0;
-  const weekPct    = cu ? cu.weeklyPercentage  : 0;
+  const sessPct = Math.round(usage.sessionPct);
+  const weekPct = Math.round(usage.weeklyPct);
 
-  const todayVal = document.getElementById('usage-today-value');
-  const weekVal  = document.getElementById('usage-week-value');
-  const todayBar = document.getElementById('usage-today-bar');
-  const weekBar  = document.getElementById('usage-week-bar');
+  const sessReset = fmtResetIn(usage.sessionResetMs);
+  const weekReset = fmtResetIn(usage.weeklyResetMs);
 
-  const sessionReset = cu ? fmtResetTime(cu.sessionResetTime) : '';
-  const weekReset    = cu ? fmtResetTime(cu.weeklyResetTime) : '';
+  const sessVal = document.getElementById('usage-today-value');
+  const weekVal = document.getElementById('usage-week-value');
 
-  if (todayVal) todayVal.textContent = Math.round(sessionPct) + '%' + (sessionReset ? ' \\u00B7 ' + sessionReset : '');
-  if (weekVal)  weekVal.textContent  = Math.round(weekPct) + '%' + (weekReset ? ' \\u00B7 ' + weekReset : '');
-  if (todayBar) {
-    todayBar.style.width = Math.min(100, sessionPct) + '%';
-    todayBar.dataset.level = ctxLevel(sessionPct);
+  const planEl = document.getElementById('usage-plan-label');
+
+  if (usage.live) {
+    if (sessVal) sessVal.innerHTML = (sessReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + sessReset + '</span> ' : '') + sessPct + '%';
+    if (weekVal) weekVal.innerHTML = (weekReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + weekReset + '</span> ' : '') + weekPct + '%';
+    if (planEl) planEl.textContent = usage.planTier ? 'Claude ' + usage.planTier : '';
+  } else {
+    if (sessVal) sessVal.textContent = 'No credentials found';
+    if (weekVal) weekVal.textContent = '';
+    if (planEl) planEl.textContent = '';
   }
-  if (weekBar) {
-    weekBar.style.width = Math.min(100, weekPct) + '%';
-    weekBar.dataset.level = ctxLevel(weekPct);
-  }
+
+  const sessBar = document.getElementById('usage-today-bar');
+  const weekBar = document.getElementById('usage-week-bar');
+  if (sessBar) { sessBar.style.width = Math.min(100, sessPct) + '%'; sessBar.dataset.level = ctxLevel(sessPct); }
+  if (weekBar) { weekBar.style.width = Math.min(100, weekPct) + '%'; weekBar.dataset.level = ctxLevel(weekPct); }
+
+  updateTimeMarkers(usage);
+}
+
+let _lastUsageTime = Date.now();
+
+function updateTimeMarkers(usage) {
+  if (!usage || !usage.live) return;
+
+  // Time elapsed = window - remaining. Position = elapsed / window.
+  const sessElapsed = usage.sessionWindowMs - usage.sessionResetMs;
+  const sessTimePct = Math.max(0, Math.min(100, (sessElapsed / usage.sessionWindowMs) * 100));
+
+  const weekElapsed = usage.weeklyWindowMs - usage.weeklyResetMs;
+  const weekTimePct = Math.max(0, Math.min(100, (weekElapsed / usage.weeklyWindowMs) * 100));
+
+  const sessMarker = document.getElementById('usage-today-marker');
+  const sessTrail  = document.getElementById('usage-today-trail');
+  const weekMarker = document.getElementById('usage-week-marker');
+  const weekTrail  = document.getElementById('usage-week-trail');
+
+  if (sessMarker) sessMarker.style.left = sessTimePct + '%';
+  if (sessTrail)  sessTrail.style.left  = 'max(0px, calc(' + sessTimePct + '% - 24px))';
+  if (weekMarker) weekMarker.style.left = weekTimePct + '%';
+  if (weekTrail)  weekTrail.style.left  = 'max(0px, calc(' + weekTimePct + '% - 24px))';
+
 }
 
 // ─── Dark mode ─────────────────────────────────────────────────────────────
@@ -1644,6 +1757,7 @@ document.getElementById('dark-toggle').addEventListener('click', () => {
   document.getElementById('dark-toggle').dataset.on = String(isOn);
   vscodeApi.postMessage({ type: 'setDarkMode', value: isOn });
 });
+
 
 // new-session-btn click is handled inline via onclick
 
@@ -1853,10 +1967,20 @@ function toggleSection(header) {
 
 function togglePin(pinEl) {
   const section = pinEl.closest('.section');
+  const root = document.getElementById('root');
   const pinned = pinEl.dataset.pinned !== 'true';
   pinEl.dataset.pinned = String(pinned);
   section.dataset.pinned = String(pinned);
-  // Calculate sticky top: below sticky-top header + any pinned sections above
+
+  // Move section: after sticky-top + all pinned sections
+  const allSections = [...root.querySelectorAll('.section[draggable]')];
+  const lastPinned = allSections.filter(s => s.dataset.pinned === 'true' && s !== section).pop();
+  const stickyTop = document.getElementById('sticky-top');
+  const insertAfter = lastPinned || stickyTop;
+  if (insertAfter && insertAfter.nextSibling) {
+    root.insertBefore(section, insertAfter.nextSibling);
+  }
+
   recalcPinOffsets();
   saveLayoutState();
 }

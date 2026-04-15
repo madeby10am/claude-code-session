@@ -3,7 +3,7 @@
   "publisher": "madeby10am",
   "displayName": "Claude Code Session",
   "description": "Monitor Claude Code sessions with a pixel art companion -- live activity badges, gradient border glows, token tracking, and an animated robot sidebar.",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
@@ -71,7 +71,7 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.0.1/out/ && cp package.json ~/.vscode/extensions/local.claude-code-session-0.0.1/package.json",
+    "deploy": "tsc -p ./ && cp out/panel.js out/extension.js out/sessionManager.js ~/.vscode/extensions/local.claude-code-session-0.1.0/out/ && cp package.json ~/.vscode/extensions/local.claude-code-session-0.1.0/package.json",
     "watch": "tsc -watch -p ./",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run"
