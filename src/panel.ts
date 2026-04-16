@@ -798,26 +798,15 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
 /* Time marker on usage bars */
 .time-marker {
   position: absolute;
-  top: 0;
+  top: -2px;
   width: 2px;
-  height: 100%;
+  height: calc(100% + 4px);
   background: #e6edf3;
   border-radius: 1px;
   transition: left 1s ease;
   z-index: 2;
 }
-.time-marker-trail {
-  position: absolute;
-  top: 0;
-  width: 24px;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5));
-  border-radius: 1px;
-  transition: left 1s ease;
-  z-index: 1;
-}
 body:not(.dark) .time-marker { background: #111827; }
-body:not(.dark) .time-marker-trail { background: linear-gradient(90deg, transparent, rgba(0,0,0,0.4)); }
 
 
 /* Empty state */
@@ -1266,7 +1255,6 @@ body:not(.dark)::before { opacity: 0.015; }
           </div>
           <div class="context-bar-track" style="position:relative;overflow:visible;">
             <div class="context-bar-fill" id="usage-today-bar" data-level="green" style="width:0%"></div>
-            <div class="time-marker-trail" id="usage-today-trail"></div>
             <div class="time-marker" id="usage-today-marker"></div>
           </div>
         </div>
@@ -1277,7 +1265,6 @@ body:not(.dark)::before { opacity: 0.015; }
           </div>
           <div class="context-bar-track" style="position:relative;overflow:visible;">
             <div class="context-bar-fill" id="usage-week-bar" data-level="green" style="width:0%"></div>
-            <div class="time-marker-trail" id="usage-week-trail"></div>
             <div class="time-marker" id="usage-week-marker"></div>
           </div>
         </div>
@@ -1706,14 +1693,11 @@ function refreshUsage() {
   const sessBar = document.getElementById('usage-today-bar');
   const weekBar = document.getElementById('usage-week-bar');
   const sessMarker = document.getElementById('usage-today-marker');
-  const sessTrail  = document.getElementById('usage-today-trail');
   const weekMarker = document.getElementById('usage-week-marker');
-  const weekTrail  = document.getElementById('usage-week-trail');
 
   // Disable transitions, snap to 0
   [sessBar, weekBar].forEach(el => { if (el) { el.style.transition = 'none'; el.style.width = '0%'; } });
   [sessMarker, weekMarker].forEach(el => { if (el) { el.style.transition = 'none'; el.style.left = '0%'; } });
-  [sessTrail, weekTrail].forEach(el => { if (el) { el.style.transition = 'none'; el.style.left = '0px'; } });
 
   // Force reflow so the browser registers 0% before we re-enable transitions
   if (sessBar) sessBar.offsetWidth;
@@ -1721,7 +1705,7 @@ function refreshUsage() {
   // Re-enable transitions
   requestAnimationFrame(() => {
     [sessBar, weekBar].forEach(el => { if (el) el.style.transition = ''; });
-    [sessMarker, weekMarker, sessTrail, weekTrail].forEach(el => { if (el) el.style.transition = ''; });
+    [sessMarker, weekMarker].forEach(el => { if (el) el.style.transition = ''; });
     vscodeApi.postMessage({ type: 'refreshUsage' });
   });
 }
@@ -1793,14 +1777,10 @@ function updateTimeMarkers(usage) {
   const weekTimePct = Math.max(0, Math.min(100, (weekElapsed / usage.weeklyWindowMs) * 100));
 
   const sessMarker = document.getElementById('usage-today-marker');
-  const sessTrail  = document.getElementById('usage-today-trail');
   const weekMarker = document.getElementById('usage-week-marker');
-  const weekTrail  = document.getElementById('usage-week-trail');
 
   if (sessMarker) sessMarker.style.left = sessTimePct + '%';
-  if (sessTrail)  sessTrail.style.left  = 'max(0px, calc(' + sessTimePct + '% - 24px))';
   if (weekMarker) weekMarker.style.left = weekTimePct + '%';
-  if (weekTrail)  weekTrail.style.left  = 'max(0px, calc(' + weekTimePct + '% - 24px))';
 
 }
 
