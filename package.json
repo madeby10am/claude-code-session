@@ -73,7 +73,7 @@
     "compile": "tsc -p ./ && npm run build:webview && npm run copy:webview-static",
     "build:webview": "esbuild src/webview/index.ts --bundle --outfile=out/webview/bundle.js --format=iife --target=es2020",
     "copy:webview-static": "mkdir -p out/webview && cp src/webview/styles.css src/webview/body.html out/webview/",
-    "deploy": "npm run compile && for d in ~/.vscode/extensions/local.claude-code-session-*/; do mkdir -p \"$d/out/session\" \"$d/out/webview\" \"$d/assets\" && cp out/*.js \"$d/out/\" && cp out/session/*.js \"$d/out/session/\" && cp out/webview/bundle.js out/webview/styles.css out/webview/body.html \"$d/out/webview/\" && cp -R assets/. \"$d/assets/\" && cp package.json \"$d/package.json\"; done",
+    "deploy": "npm run compile && for d in ~/.vscode/extensions/madeby10am.claude-code-session-*/ ~/.vscode/extensions/local.claude-code-session-*/; do [ -d \"$d\" ] || continue; mkdir -p \"$d/out/session\" \"$d/out/webview\" \"$d/assets\" && cp out/*.js \"$d/out/\" && cp out/session/*.js \"$d/out/session/\" && cp out/webview/bundle.js out/webview/styles.css out/webview/body.html \"$d/out/webview/\" && cp -R assets/. \"$d/assets/\" && cp package.json \"$d/package.json\"; done",
     "watch": "tsc -watch -p ./",
     "watch:webview": "esbuild src/webview/index.ts --bundle --outfile=out/webview/bundle.js --format=iife --target=es2020 --watch",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
