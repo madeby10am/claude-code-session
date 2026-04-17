@@ -608,26 +608,18 @@ body:not(.dark) .time-marker { background: #111827; }
   font-weight: 700;
 }
 
-/* Usage Trends legend */
-.usage-trends-legend {
+/* Token Activity summary line above the chart */
+.token-activity-summary {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 10px;
-  color: var(--text-dim);
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text);
   margin-bottom: 4px;
-  flex-wrap: wrap;
 }
-.legend-item { display: inline-flex; align-items: center; gap: 4px; }
-.legend-pace {
-  display: inline-flex;
-  gap: 1px;
-  margin-left: 2px;
-}
-.legend-swatch {
-  width: 8px; height: 4px;
-  border-radius: 1px;
-  display: inline-block;
+.token-activity-summary #token-activity-total {
+  font-family: var(--mono);
+  font-weight: 600;
 }
 .legend-range {
   margin-left: auto;

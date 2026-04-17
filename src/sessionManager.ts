@@ -31,6 +31,10 @@ import {
   getInstalledClis as getInstalledClisImpl,
   CliInfo,
 } from './session/clis';
+import {
+  getRecentTokenEvents,
+  TokenEvent,
+} from './session/tokenActivity';
 
 // Re-export types so existing imports (panel.ts, extension.ts) keep working.
 export type { ActivityState, SessionState, UsageStats } from './session/types';
@@ -82,6 +86,10 @@ export class SessionManager {
 
   getInstalledClis(): CliInfo[] {
     return getInstalledClisImpl();
+  }
+
+  getTokenActivity(hours = 24): TokenEvent[] {
+    return getRecentTokenEvents(hours);
   }
 
   getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {

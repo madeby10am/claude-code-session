@@ -74,26 +74,18 @@
     </div>
   </div>
 
-  <!-- USAGE TRENDS -->
-  <div class="section" id="usage-trends-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Usage Trends <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+  <!-- TOKEN ACTIVITY -->
+  <div class="section" id="token-activity-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="12"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="14"/></svg>Token Activity <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body framed gray">
-      <div class="usage-trends-legend">
-        <span class="legend-item">Session</span>
-        <span class="legend-item" style="opacity:0.55;">Weekly</span>
-        <span class="legend-pace">
-          <span class="legend-swatch" style="background:#047857;"></span>
-          <span class="legend-swatch" style="background:#65a30d;"></span>
-          <span class="legend-swatch" style="background:#eab308;"></span>
-          <span class="legend-swatch" style="background:#f59e0b;"></span>
-          <span class="legend-swatch" style="background:#ef4444;"></span>
-        </span>
-        <span id="usage-trends-range" class="legend-range">&mdash;</span>
+      <div class="token-activity-summary">
+        <span id="token-activity-total">&mdash;</span>
+        <span id="token-activity-range" class="legend-range">last 24h</span>
       </div>
-      <canvas id="usage-trends-canvas" width="400" height="100" style="width:100%;height:100px;display:block;"></canvas>
-      <div id="usage-trends-empty" class="cap-item" style="color:var(--text-muted);padding-top:6px;">Collecting usage data&hellip; points appear every 60s while VS Code is open.</div>
+      <canvas id="token-activity-canvas" width="400" height="100" style="width:100%;height:100px;display:block;"></canvas>
+      <div id="token-activity-empty" class="cap-item" style="color:var(--text-muted);padding-top:6px;">No messages in the last 24 hours.</div>
       <div class="usage-trends-footer">
-        <button class="card-refresh-btn" title="Reset history" onclick="event.stopPropagation();resetUsageHistory();">&#x21ba;</button>
+        <button class="card-refresh-btn" title="Refresh" onclick="event.stopPropagation();refreshTokenActivity();">&#x21bb;</button>
       </div>
     </div>
   </div>

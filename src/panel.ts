@@ -3,7 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { SessionState, UsageStats } from './sessionManager';
-import { ExtensionToWebview, WebviewToExtension, EnvData, UsagePoint } from './shared/messages';
+import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
+import { TokenEvent } from './session/tokenActivity';
 
 export class Panel implements vscode.WebviewViewProvider {
   private static instance: Panel | undefined;
@@ -104,8 +105,12 @@ export class Panel implements vscode.WebviewViewProvider {
       if (this.lastUsage) {
         this.postMessage({ type: 'usageUpdate', usage: this.lastUsage });
       }
-      if (this.lastHistory.length > 0) {
-        this.postMessage({ type: 'usageHistory', points: this.lastHistory });
+      if (this.lastTokenActivity.length > 0) {
+        this.postMessage({
+          type: 'tokenActivity',
+          events: this.lastTokenActivity,
+          windowHours: this.lastTokenWindowHours,
+        });
       }
       // Then trigger fresh fetch on top
       if (this.onReadyCallback) { this.onReadyCallback(); }
@@ -115,8 +120,8 @@ export class Panel implements vscode.WebviewViewProvider {
       this.sendProjectInfo();
       if (this.onReadyCallback) { this.onReadyCallback(); }
     }
-    if (msg.type === 'resetUsageHistory') {
-      if (this.onResetUsageHistoryCallback) { this.onResetUsageHistoryCallback(); }
+    if (msg.type === 'refreshTokenActivity') {
+      if (this.onRefreshTokenActivityCallback) { this.onRefreshTokenActivityCallback(); }
     }
     if (msg.type === 'setDarkMode') {
       this.context.workspaceState.update('darkMode', msg.value);
@@ -260,14 +265,16 @@ export class Panel implements vscode.WebviewViewProvider {
     this.postMessage({ type: 'usageUpdate', usage });
   }
 
-  private lastHistory: UsagePoint[] = [];
-  sendUsageHistory(points: UsagePoint[]): void {
-    this.lastHistory = points;
-    this.postMessage({ type: 'usageHistory', points });
+  private lastTokenActivity: TokenEvent[] = [];
+  private lastTokenWindowHours = 24;
+  sendTokenActivity(events: TokenEvent[], windowHours = 24): void {
+    this.lastTokenActivity  = events;
+    this.lastTokenWindowHours = windowHours;
+    this.postMessage({ type: 'tokenActivity', events, windowHours });
   }
 
-  private onResetUsageHistoryCallback: (() => void) | null = null;
-  onResetUsageHistory(cb: () => void): void { this.onResetUsageHistoryCallback = cb; }
+  private onRefreshTokenActivityCallback: (() => void) | null = null;
+  onRefreshTokenActivity(cb: () => void): void { this.onRefreshTokenActivityCallback = cb; }
 
   sendEnvData(data: EnvData): void {
     this.lastEnvData = data;

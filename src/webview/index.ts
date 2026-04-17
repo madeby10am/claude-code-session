@@ -343,8 +343,8 @@ window.addEventListener('message', e => {
     updateUsageMeters(msg.usage);
   }
 
-  if (msg.type === 'usageHistory') {
-    renderUsageTrends(msg.points || []);
+  if (msg.type === 'tokenActivity') {
+    renderTokenActivity(msg.events || [], msg.windowHours || 24);
   }
 
   if (msg.type === 'darkMode') {
@@ -480,132 +480,105 @@ function updateTimeMarkers(usage) {
 
 }
 
-// ─── Usage Trends line chart ────────────────────────────────────────────────
-// Same palette as the Usage bars' data-level CSS.
-const LEVEL_COLORS = {
-  'green':        '#047857',
-  'yellow-green': '#65a30d',
-  'yellow':       '#eab308',
-  'orange':       '#f59e0b',
-  'red':          '#ef4444',
-};
+// ─── Token Activity bar chart ───────────────────────────────────────────────
+// One bar per assistant message in the lookback window. Height = tokens spent
+// that turn, positioned at its real timestamp. Real data, no estimation.
+let _lastTokenEvents = [];
+let _lastTokenWindowHours = 24;
 
-const SESSION_WINDOW_MS = 5  * 60 * 60 * 1000;
-const WEEKLY_WINDOW_MS  = 7  * 24 * 60 * 60 * 1000;
-
-// For live points (with resetMs), pace-level; for historical (no resetMs), fall back
-// to raw percentage buckets so the line still changes color with volume.
-function colorFor(usagePct, resetMs, windowMs) {
-  if (typeof resetMs !== 'number') {
-    if (usagePct <= 20)  return LEVEL_COLORS['green'];
-    if (usagePct <= 40)  return LEVEL_COLORS['yellow-green'];
-    if (usagePct <= 60)  return LEVEL_COLORS['yellow'];
-    if (usagePct <= 80)  return LEVEL_COLORS['orange'];
-    return LEVEL_COLORS['red'];
-  }
-  const timePct = Math.max(0, Math.min(100, ((windowMs - resetMs) / windowMs) * 100));
-  return LEVEL_COLORS[paceLevel(usagePct, timePct)];
+function fmtTokensShort(n) {
+  if (!n || n <= 0) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return Math.round(n / 1_000) + 'k';
+  return String(n);
 }
 
-let _lastTrendPoints = [];
+function renderTokenActivity(events, windowHours) {
+  _lastTokenEvents = events || [];
+  _lastTokenWindowHours = windowHours || 24;
 
-function renderUsageTrends(points) {
-  _lastTrendPoints = points || [];
-  const canvas = document.getElementById('usage-trends-canvas');
-  const empty  = document.getElementById('usage-trends-empty');
-  const rangeEl = document.getElementById('usage-trends-range');
+  const canvas  = document.getElementById('token-activity-canvas');
+  const empty   = document.getElementById('token-activity-empty');
+  const totalEl = document.getElementById('token-activity-total');
+  const rangeEl = document.getElementById('token-activity-range');
   if (!canvas) return;
 
-  if (!points || points.length === 0) {
+  if (rangeEl) rangeEl.textContent = 'last ' + _lastTokenWindowHours + 'h';
+
+  if (!events || events.length === 0) {
     canvas.style.display = 'none';
     if (empty) empty.style.display = '';
-    if (rangeEl) rangeEl.textContent = '';
+    if (totalEl) totalEl.textContent = '\u2014';
     return;
   }
   canvas.style.display = 'block';
   if (empty) empty.style.display = 'none';
 
-  const dpr = window.devicePixelRatio || 1;
+  const dpr  = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 400;
   const cssH = 100;
-  if (canvas.width !== cssW * dpr) canvas.width = cssW * dpr;
+  if (canvas.width  !== cssW * dpr) canvas.width  = cssW * dpr;
   if (canvas.height !== cssH * dpr) canvas.height = cssH * dpr;
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  const padL = 4, padR = 4, padT = 8, padB = 10;
+  const padL = 2, padR = 2, padT = 6, padB = 14;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
-  const tMin = points[0].ts;
-  const tMax = points[points.length - 1].ts;
-  const tSpan = Math.max(1, tMax - tMin);
+  const now   = Date.now();
+  const tMin  = now - _lastTokenWindowHours * 60 * 60 * 1000;
+  const tSpan = Math.max(1, now - tMin);
   const xAt = (ts) => padL + ((ts - tMin) / tSpan) * w;
-  const yAt = (pct) => padT + (1 - Math.max(0, Math.min(100, pct)) / 100) * h;
 
-  // Grid lines at 25/50/75/100%
-  const textDim = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
+  let maxTokens = 0;
+  let totalTokens = 0;
+  for (const e of events) {
+    if (e.tokens > maxTokens) maxTokens = e.tokens;
+    totalTokens += e.tokens;
+  }
+  if (maxTokens <= 0) maxTokens = 1;
+
+  // Faint baseline
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
   ctx.lineWidth = 1;
-  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-  ctx.font = '8px ui-monospace, SFMono-Regular, monospace';
+  ctx.beginPath();
+  ctx.moveTo(padL, padT + h + 0.5);
+  ctx.lineTo(padL + w, padT + h + 0.5);
+  ctx.stroke();
+
+  // Time axis labels
+  const textDim = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
   ctx.fillStyle = textDim;
-  for (const pct of [25, 50, 75, 100]) {
-    const y = yAt(pct);
-    ctx.beginPath();
-    ctx.moveTo(padL, y);
-    ctx.lineTo(padL + w, y);
-    ctx.stroke();
-    ctx.fillText(pct + '%', padL + 2, y - 2);
+  ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillText(_lastTokenWindowHours + 'h ago', padL, padT + h + 11);
+  const nowLabel = 'now';
+  const nowW = ctx.measureText(nowLabel).width;
+  ctx.fillText(nowLabel, padL + w - nowW, padT + h + 11);
+
+  // Bars — amber, height proportional to tokens.
+  ctx.fillStyle = '#f59e0b';
+  const barW = 2;
+  for (const e of events) {
+    const x = xAt(e.ts);
+    const barH = (e.tokens / maxTokens) * h;
+    ctx.fillRect(x - barW / 2, padT + h - barH, barW, barH);
   }
 
-  // Draw each segment with its start-point's pace color (hard color shift across segments).
-  function drawSeries(getY, pickColor) {
-    ctx.lineWidth = 1.5;
-    if (points.length === 1) {
-      const p = points[0];
-      ctx.fillStyle = pickColor(p);
-      ctx.beginPath();
-      ctx.arc(xAt(p.ts), getY(p), 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      return;
-    }
-    for (let i = 1; i < points.length; i++) {
-      const a = points[i - 1], b = points[i];
-      ctx.strokeStyle = pickColor(a);
-      ctx.beginPath();
-      ctx.moveTo(xAt(a.ts), getY(a));
-      ctx.lineTo(xAt(b.ts), getY(b));
-      ctx.stroke();
-    }
-  }
-
-  drawSeries(
-    p => yAt(p.sessionPct),
-    p => colorFor(p.sessionPct, p.sessionResetMs, SESSION_WINDOW_MS)
-  );
-  // Weekly rendered slightly dimmer so Session remains the primary series.
-  ctx.globalAlpha = 0.55;
-  drawSeries(
-    p => yAt(p.weeklyPct),
-    p => colorFor(p.weeklyPct, p.weeklyResetMs, WEEKLY_WINDOW_MS)
-  );
-  ctx.globalAlpha = 1;
-
-  if (rangeEl) {
-    const spanMin = Math.round(tSpan / 60000);
-    const spanLabel = spanMin < 60
-      ? spanMin + 'm'
-      : Math.round(spanMin / 60) + 'h ' + (spanMin % 60) + 'm';
-    rangeEl.textContent = spanLabel + ' \u00b7 ' + points.length + ' pts';
+  if (totalEl) {
+    totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + events.length + ' msgs';
   }
 }
 
-// Re-render the chart on resize so it stays crisp and proportional.
 window.addEventListener('resize', () => {
-  if (_lastTrendPoints.length > 0) renderUsageTrends(_lastTrendPoints);
+  if (_lastTokenEvents.length > 0) renderTokenActivity(_lastTokenEvents, _lastTokenWindowHours);
 });
+
+function refreshTokenActivity() {
+  vscodeApi.postMessage({ type: 'refreshTokenActivity' });
+}
 
 // ─── Dark mode ─────────────────────────────────────────────────────────────
 function applyDarkMode(on) {
@@ -938,8 +911,8 @@ function saveLayoutState() {
   vscodeApi.setState({ sectionOrder: order, sectionCollapsed: collapsed, sectionPinned: pinned });
 }
 
-// On first load (no saved state), collapse every section except Sessions, Usage, and Usage Trends.
-const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section', 'usage-trends-section']);
+// On first load (no saved state), collapse every section except Sessions, Usage, and Token Activity.
+const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section', 'token-activity-section']);
 
 function applyDefaultCollapse() {
   document.querySelectorAll('#root > .section[draggable]').forEach(s => {
@@ -1032,13 +1005,9 @@ restoreLayoutState();
 // ─── Boot ───────────────────────────────────────────────────────────────────
 vscodeApi.postMessage({ type: 'ready' });
 
-function resetUsageHistory() {
-  vscodeApi.postMessage({ type: 'resetUsageHistory' });
-}
-
 // Expose the things that inline HTML onclick handlers reference.
-(window as any).vscodeApi          = vscodeApi;
-(window as any).toggleSection      = toggleSection;
-(window as any).togglePin          = togglePin;
-(window as any).refreshUsage       = refreshUsage;
-(window as any).resetUsageHistory  = resetUsageHistory;
+(window as any).vscodeApi             = vscodeApi;
+(window as any).toggleSection         = toggleSection;
+(window as any).togglePin             = togglePin;
+(window as any).refreshUsage          = refreshUsage;
+(window as any).refreshTokenActivity  = refreshTokenActivity;

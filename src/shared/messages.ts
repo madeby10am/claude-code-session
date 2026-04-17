@@ -4,6 +4,7 @@
 import type { SessionState, UsageStats } from '../session/types';
 import type { SkillCategory } from '../session/categorize';
 import type { CliInfo } from '../session/clis';
+import type { TokenEvent } from '../session/tokenActivity';
 
 export interface ProjectInfo {
   workspace:        string;
@@ -40,26 +41,18 @@ export interface EnvData {
   clis:           CliInfo[];
 }
 
-export interface UsagePoint {
-  ts:              number;
-  sessionPct:      number;
-  weeklyPct:       number;
-  sessionResetMs?: number;  // ms remaining in the 5h window at sample time
-  weeklyResetMs?:  number;  // ms remaining in the 7d window at sample time
-}
-
 export type ExtensionToWebview =
   | { type: 'sessionsUpdate'; sessions: SessionState[] }
   | { type: 'projectInfo';    data: ProjectInfo }
   | { type: 'envData';        data: EnvData }
   | { type: 'usageUpdate';    usage: UsageStats }
-  | { type: 'usageHistory';   points: UsagePoint[] }
+  | { type: 'tokenActivity';  events: TokenEvent[]; windowHours: number }
   | { type: 'darkMode';       value: boolean };
 
 export type WebviewToExtension =
   | { type: 'ready' }
   | { type: 'refreshUsage' }
-  | { type: 'resetUsageHistory' }
+  | { type: 'refreshTokenActivity' }
   | { type: 'setDarkMode'; value: boolean }
   | { type: 'openUrl';     url: string }
   | { type: 'openFile';    file: string }
