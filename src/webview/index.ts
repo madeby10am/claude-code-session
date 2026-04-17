@@ -644,6 +644,35 @@ function renderTokenActivity(events) {
     ctx.fillRect(x, padT + h - barH, barW, barH);
   }
 
+  // Line connecting the top of each bar, dropping to baseline for empty
+  // buckets. Anchored at both edges at baseline so it spans the full chart.
+  const baselineY = padT + h;
+  const barCenter = (i) => padL + i * slotW + slotW / 2;
+  const yAtBucket = (i) => padT + h - (buckets[i] / niceMax) * h;
+  const lineColor = (getComputedStyle(document.body).getPropertyValue('--text-bright') || '#111').trim();
+
+  ctx.beginPath();
+  ctx.moveTo(padL, baselineY);
+  for (let i = 0; i < numBuckets; i++) {
+    ctx.lineTo(barCenter(i), yAtBucket(i));
+  }
+  ctx.lineTo(padL + w, baselineY);
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Small dots on top of the active bars so peaks read clearly where the
+  // line bends. Empty buckets stay at baseline without a dot.
+  ctx.fillStyle = lineColor;
+  for (let i = 0; i < numBuckets; i++) {
+    if (buckets[i] <= 0) continue;
+    ctx.beginPath();
+    ctx.arc(barCenter(i), yAtBucket(i), 1.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // X axis name under the tick labels.
   ctx.fillStyle = labelColor;
   ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
