@@ -344,7 +344,7 @@ window.addEventListener('message', e => {
   }
 
   if (msg.type === 'tokenActivity') {
-    renderTokenActivity(msg.events || [], msg.windowHours || 24);
+    renderTokenActivity(msg.events || []);
   }
 
   if (msg.type === 'darkMode') {
@@ -480,11 +480,13 @@ function updateTimeMarkers(usage) {
 
 }
 
-// ─── Token Activity bar chart ───────────────────────────────────────────────
-// One bar per assistant message in the lookback window. Height = tokens spent
-// that turn, positioned at its real timestamp. Real data, no estimation.
+// ─── Token Activity line chart ──────────────────────────────────────────────
+// Connected line + dots over real assistant-message token counts. Real data,
+// no estimation. The canvas size stays 100px tall; the window toggle filters
+// events client-side to the selected lookback.
 let _lastTokenEvents = [];
-let _lastTokenWindowHours = 24;
+const TOKEN_WINDOW_DEFAULT = 24;
+let _tokenWindowHours = TOKEN_WINDOW_DEFAULT;
 
 function fmtTokensShort(n) {
   if (!n || n <= 0) return '0';
@@ -493,9 +495,31 @@ function fmtTokensShort(n) {
   return String(n);
 }
 
-function renderTokenActivity(events, windowHours) {
-  _lastTokenEvents = events || [];
-  _lastTokenWindowHours = windowHours || 24;
+// Round up to the next 1/2/5 × 10^n so axis ticks land on nice numbers.
+function niceCeil(n) {
+  if (n <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(n)));
+  const rel = n / pow;
+  let mul;
+  if      (rel <= 1) mul = 1;
+  else if (rel <= 2) mul = 2;
+  else if (rel <= 5) mul = 5;
+  else               mul = 10;
+  return mul * pow;
+}
+
+// Tick positions on the X axis for a given window in hours.
+function xAxisTicks(windowHours) {
+  if (windowHours <= 1)   return [{ hoursAgo: 1,   label: '1h ago' }, { hoursAgo: 0.5, label: '30m' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours <= 5)   return [{ hoursAgo: 5,   label: '5h ago' }, { hoursAgo: 3,   label: '3h' }, { hoursAgo: 1, label: '1h' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours <= 12)  return [{ hoursAgo: 12,  label: '12h ago' }, { hoursAgo: 8, label: '8h' }, { hoursAgo: 4, label: '4h' }, { hoursAgo: 0, label: 'now' }];
+  return                         [{ hoursAgo: 24,  label: '24h ago' }, { hoursAgo: 16, label: '16h' }, { hoursAgo: 8, label: '8h' }, { hoursAgo: 0, label: 'now' }];
+}
+
+// Window comes from the user's chip toggle, not the incoming message — the
+// extension always sends 24h of events; we filter client-side.
+function renderTokenActivity(events) {
+  if (events) _lastTokenEvents = events;
 
   const canvas  = document.getElementById('token-activity-canvas');
   const empty   = document.getElementById('token-activity-empty');
@@ -503,9 +527,13 @@ function renderTokenActivity(events, windowHours) {
   const rangeEl = document.getElementById('token-activity-range');
   if (!canvas) return;
 
-  if (rangeEl) rangeEl.textContent = 'last ' + _lastTokenWindowHours + 'h';
+  if (rangeEl) rangeEl.textContent = 'last ' + _tokenWindowHours + 'h';
 
-  if (!events || events.length === 0) {
+  const now  = Date.now();
+  const tMin = now - _tokenWindowHours * 60 * 60 * 1000;
+  const visible = _lastTokenEvents.filter(e => e.ts >= tMin);
+
+  if (visible.length === 0) {
     canvas.style.display = 'none';
     if (empty) empty.style.display = '';
     if (totalEl) totalEl.textContent = '\u2014';
@@ -524,61 +552,121 @@ function renderTokenActivity(events, windowHours) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  const padL = 2, padR = 2, padT = 6, padB = 14;
+  const padL = 30, padR = 4, padT = 6, padB = 14;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
-  const now   = Date.now();
-  const tMin  = now - _lastTokenWindowHours * 60 * 60 * 1000;
   const tSpan = Math.max(1, now - tMin);
   const xAt = (ts) => padL + ((ts - tMin) / tSpan) * w;
 
   let maxTokens = 0;
   let totalTokens = 0;
-  for (const e of events) {
+  for (const e of visible) {
     if (e.tokens > maxTokens) maxTokens = e.tokens;
     totalTokens += e.tokens;
   }
-  if (maxTokens <= 0) maxTokens = 1;
+  const niceMax = niceCeil(maxTokens) || 1;
+  const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
-  // Faint baseline
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(padL, padT + h + 0.5);
-  ctx.lineTo(padL + w, padT + h + 0.5);
-  ctx.stroke();
+  const isDark = document.body.classList.contains('dark') || !document.body.classList.contains('light');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  const labelColor = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
 
-  // Time axis labels
-  const textDim = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
-  ctx.fillStyle = textDim;
+  // Horizontal grid + Y-axis labels (tokens)
   ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
-  ctx.fillText(_lastTokenWindowHours + 'h ago', padL, padT + h + 11);
-  const nowLabel = 'now';
-  const nowW = ctx.measureText(nowLabel).width;
-  ctx.fillText(nowLabel, padL + w - nowW, padT + h + 11);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = labelColor;
+  for (let i = 0; i <= 4; i++) {
+    const frac = i / 4;
+    const tok  = niceMax * (1 - frac);  // top → max, bottom → 0
+    const y    = padT + frac * h;
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padL, y + 0.5);
+    ctx.lineTo(padL + w, y + 0.5);
+    ctx.stroke();
+    const label = fmtTokensShort(tok);
+    const lw = ctx.measureText(label).width;
+    ctx.fillText(label, padL - lw - 3, y);
+  }
 
-  // Bars — amber, height proportional to tokens.
+  // Vertical grid + X-axis labels (time)
+  const ticks = xAxisTicks(_tokenWindowHours);
+  ctx.textBaseline = 'alphabetic';
+  for (const t of ticks) {
+    const ts = now - t.hoursAgo * 60 * 60 * 1000;
+    const x = xAt(ts);
+    ctx.strokeStyle = gridColor;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, padT);
+    ctx.lineTo(x + 0.5, padT + h);
+    ctx.stroke();
+
+    const tw = ctx.measureText(t.label).width;
+    let lx = x - tw / 2;
+    if (lx < padL)            lx = padL;
+    if (lx + tw > padL + w)   lx = padL + w - tw;
+    ctx.fillStyle = labelColor;
+    ctx.fillText(t.label, lx, padT + h + 11);
+  }
+
+  // Connected line through all events in chronological order
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  if (visible.length >= 2) {
+    ctx.beginPath();
+    for (let i = 0; i < visible.length; i++) {
+      const e = visible[i];
+      const x = xAt(e.ts), y = yAt(e.tokens);
+      if (i === 0) ctx.moveTo(x, y);
+      else         ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  // Dots at each data point
   ctx.fillStyle = '#f59e0b';
-  const barW = 2;
-  for (const e of events) {
-    const x = xAt(e.ts);
-    const barH = (e.tokens / maxTokens) * h;
-    ctx.fillRect(x - barW / 2, padT + h - barH, barW, barH);
+  for (const e of visible) {
+    ctx.beginPath();
+    ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   if (totalEl) {
-    totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + events.length + ' msgs';
+    totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + visible.length + ' msgs';
   }
 }
 
 window.addEventListener('resize', () => {
-  if (_lastTokenEvents.length > 0) renderTokenActivity(_lastTokenEvents, _lastTokenWindowHours);
+  if (_lastTokenEvents.length > 0) renderTokenActivity();
 });
 
 function refreshTokenActivity() {
   vscodeApi.postMessage({ type: 'refreshTokenActivity' });
 }
+
+// Window-toggle chips: 1h / 5h / 12h / 24h. Selection persists via setState.
+(function initTokenWindowChips() {
+  const saved = vscodeApi.getState && vscodeApi.getState();
+  if (saved && typeof saved.tokenActivityWindow === 'number') {
+    _tokenWindowHours = saved.tokenActivityWindow;
+  }
+  const row = document.getElementById('token-window-filter');
+  if (!row) return;
+  row.querySelectorAll('.token-window-btn').forEach(btn => {
+    const hours = parseInt(btn.dataset.window, 10);
+    btn.dataset.active = String(hours === _tokenWindowHours);
+    btn.addEventListener('click', () => {
+      _tokenWindowHours = hours;
+      row.querySelectorAll('.token-window-btn').forEach(b => b.dataset.active = String(parseInt(b.dataset.window, 10) === hours));
+      const prev = (vscodeApi.getState && vscodeApi.getState()) || {};
+      vscodeApi.setState({ ...prev, tokenActivityWindow: hours });
+      renderTokenActivity();
+    });
+  });
+})();
 
 // ─── Dark mode ─────────────────────────────────────────────────────────────
 function applyDarkMode(on) {

@@ -588,7 +588,7 @@ body:not(.dark) .time-marker { background: #111827; }
 }
 
 /* ===== Skills filter & items ===== */
-.skills-filter-btn, .skills-category-btn {
+.skills-filter-btn, .skills-category-btn, .token-window-btn {
   font-size: 10px;
   padding: 2px 8px;
   border-radius: 10px;
@@ -600,8 +600,10 @@ body:not(.dark) .time-marker { background: #111827; }
   font-weight: 500;
   transition: all 0.15s;
 }
-.skills-filter-btn:hover, .skills-category-btn:hover { border-color: var(--accent); color: var(--accent); }
-.skills-filter-btn[data-active="true"], .skills-category-btn[data-active="true"] {
+.skills-filter-btn:hover, .skills-category-btn:hover, .token-window-btn:hover {
+  border-color: var(--accent); color: var(--accent);
+}
+.skills-filter-btn[data-active="true"], .skills-category-btn[data-active="true"], .token-window-btn[data-active="true"] {
   background: var(--accent);
   color: var(--bg);
   border-color: var(--accent);
