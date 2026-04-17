@@ -315,6 +315,9 @@ window.addEventListener('message', e => {
     _allSkills = d.skills || [];
     renderSkills();
 
+    // CLIs
+    renderClis(d.clis || []);
+
     // Session history
     const shList = document.getElementById('session-history-list');
     if (shList) {
@@ -617,10 +620,41 @@ function updateAllAnimations(sessions) {
 }
 
 // ─── Skills search & filter ─────────────────────────────────────────────────
+// Fixed display order matches SKILL_CATEGORIES in src/session/categorize.ts.
+const SKILL_CATEGORY_ORDER = [
+  'Planning', 'Design', 'Review', 'Testing',
+  'SEO & Content', 'Automation', 'Integrations', 'Dev Tools', 'Other',
+];
+
 let _allSkills = [];
 let _skillFilter = 'all';
+let _skillCategory = 'all';
+let _categoryChipsReady = false;
+
+function ensureCategoryChips() {
+  if (_categoryChipsReady) return;
+  const row = document.getElementById('skills-category-filter');
+  if (!row) return;
+  const presentCategories = new Set(_allSkills.map(s => s.category).filter(Boolean));
+  const shown = SKILL_CATEGORY_ORDER.filter(c => presentCategories.has(c));
+  if (shown.length === 0) return;
+  const allBtn = '<button class="skills-category-btn" data-category="all" data-active="true">All</button>';
+  row.innerHTML = allBtn + shown.map(c =>
+    '<button class="skills-category-btn" data-category="' + c + '" data-active="false">' + c + '</button>'
+  ).join('');
+  row.querySelectorAll('.skills-category-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      row.querySelectorAll('.skills-category-btn').forEach(b => b.dataset.active = 'false');
+      btn.dataset.active = 'true';
+      _skillCategory = btn.dataset.category;
+      renderSkills();
+    });
+  });
+  _categoryChipsReady = true;
+}
 
 function renderSkills() {
+  ensureCategoryChips();
   const list = document.getElementById('skills-list');
   if (!list) return;
 
@@ -628,6 +662,7 @@ function renderSkills() {
   const q = query.toLowerCase();
   const filtered = _allSkills.filter(s => {
     if (_skillFilter !== 'all' && s.source !== _skillFilter) return false;
+    if (_skillCategory !== 'all' && s.category !== _skillCategory) return false;
     if (q && !s.name.toLowerCase().includes(q) && !(s.description || '').toLowerCase().includes(q)) return false;
     return true;
   });
@@ -658,6 +693,37 @@ document.querySelectorAll('.skills-filter-btn').forEach(btn => {
     renderSkills();
   });
 });
+
+// ─── CLI Tools ──────────────────────────────────────────────────────────────
+function renderClis(clis) {
+  const list = document.getElementById('cli-list');
+  if (!list) return;
+  if (!clis || clis.length === 0) {
+    list.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No CLIs detected</div>';
+    return;
+  }
+
+  const groups = {};
+  const order = [];
+  for (const c of clis) {
+    if (!groups[c.group]) { groups[c.group] = []; order.push(c.group); }
+    groups[c.group].push(c);
+  }
+
+  const html = order.map(group => {
+    const items = groups[group].map(c => {
+      const status = c.installed ? 'connected' : 'no';
+      const color = c.installed ? '' : 'color:var(--text-muted);';
+      if (c.installed) {
+        return '<div class="cap-item" style="cursor:pointer;" onclick="vscodeApi.postMessage({type:\'inputSkill\',name:\'' + c.name + '\'})"><span class="cap-dot" data-status="' + status + '"></span><span>' + c.name + '</span></div>';
+      }
+      return '<div class="cap-item" style="' + color + '"><span class="cap-dot" data-status="' + status + '"></span><span>' + c.name + '</span></div>';
+    }).join('');
+    return '<div class="cli-group-label">' + group + '</div>' + items;
+  }).join('');
+
+  list.innerHTML = html;
+}
 
 // ─── Section collapse & drag-to-reorder ─────────────────────────────────────
 function toggleSection(header) {
@@ -714,9 +780,21 @@ function saveLayoutState() {
   vscodeApi.setState({ sectionOrder: order, sectionCollapsed: collapsed, sectionPinned: pinned });
 }
 
+// On first load (no saved state), collapse every section except Sessions + Usage.
+const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section']);
+
+function applyDefaultCollapse() {
+  document.querySelectorAll('#root > .section[draggable]').forEach(s => {
+    if (!DEFAULT_OPEN.has(s.id)) {
+      const h = s.querySelector('.section-header');
+      if (h) h.dataset.open = 'false';
+    }
+  });
+}
+
 function restoreLayoutState() {
   const state = vscodeApi.getState();
-  if (!state) return;
+  if (!state) { applyDefaultCollapse(); return; }
   const root = document.getElementById('root');
   if (state.sectionOrder) {
     const sections = {};

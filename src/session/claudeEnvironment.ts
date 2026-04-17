@@ -1,6 +1,7 @@
 import * as fs   from 'fs';
 import * as os   from 'os';
 import * as path from 'path';
+import { categorizeSkill, SkillCategory } from './categorize';
 
 export const CLAUDE_DIR            = path.join(os.homedir(), '.claude');
 export const CLAUDE_PROJECTS_DIR   = path.join(CLAUDE_DIR, 'projects');
@@ -10,6 +11,7 @@ export interface SkillInfo {
   name:        string;
   source:      string;
   description: string;
+  category:    SkillCategory;
 }
 
 function parseSkillDescription(filePath: string): string {
@@ -52,7 +54,8 @@ export function getSkills(): SkillInfo[] {
         const skillFile = path.join(userSkillsDir, name, 'SKILL.md');
         if (fs.existsSync(skillFile) && !seen.has(name)) {
           seen.add(name);
-          skills.push({ name, source: 'user', description: parseSkillDescription(skillFile) });
+          const description = parseSkillDescription(skillFile);
+          skills.push({ name, source: 'user', description, category: categorizeSkill(name, description) });
         }
       }
     }
@@ -80,7 +83,8 @@ export function getSkills(): SkillInfo[] {
                     const sf = path.join(skillsDir, name, 'SKILL.md');
                     if (!seen.has(name) && fs.existsSync(sf)) {
                       seen.add(name);
-                      skills.push({ name, source: 'plugin', description: parseSkillDescription(sf) });
+                      const description = parseSkillDescription(sf);
+                      skills.push({ name, source: 'plugin', description, category: categorizeSkill(name, description) });
                     }
                   }
                 } catch { /* ignore */ }

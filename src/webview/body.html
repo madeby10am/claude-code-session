@@ -129,14 +129,25 @@
     <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
     <div class="section-body">
       <input type="text" id="skills-search" placeholder="Search skills..." style="width:100%;padding:4px 8px;margin-bottom:6px;font-size:11px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa;color:#333;font-family:inherit;outline:none;">
-      <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:8px;">
+      <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">
         <button class="skills-filter-btn" data-filter="all" data-active="true">All</button>
         <button class="skills-filter-btn" data-filter="user" data-active="false">User</button>
         <button class="skills-filter-btn" data-filter="plugin" data-active="false">Plugin</button>
       </div>
+      <div id="skills-category-filter" style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;">
+        <button class="skills-category-btn" data-category="all" data-active="true">All</button>
+      </div>
       <div id="skills-list">
         <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
       </div>
+    </div>
+  </div>
+
+  <!-- CLI TOOLS -->
+  <div class="section" id="cli-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>CLI Tools <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="cli-list">
+      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
     </div>
   </div>
 

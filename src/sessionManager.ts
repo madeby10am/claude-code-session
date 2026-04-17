@@ -27,6 +27,10 @@ import {
   clearEntryTimers,
   resetTimers,
 } from './session/activityTimers';
+import {
+  getInstalledClis as getInstalledClisImpl,
+  CliInfo,
+} from './session/clis';
 
 // Re-export types so existing imports (panel.ts, extension.ts) keep working.
 export type { ActivityState, SessionState, UsageStats } from './session/types';
@@ -74,6 +78,10 @@ export class SessionManager {
 
   getSkills(): SkillInfo[] {
     return getSkillsImpl();
+  }
+
+  getInstalledClis(): CliInfo[] {
+    return getInstalledClisImpl();
   }
 
   getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {

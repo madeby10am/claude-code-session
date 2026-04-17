@@ -41,6 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
       mcpServers: sessionManager!.getMcpServers(),
       recentSessions: sessionManager!.getRecentSessions(),
       skills: sessionManager!.getSkills(),
+      clis: sessionManager!.getInstalledClis(),
     });
     panel!.sendProjectInfo();
   };
