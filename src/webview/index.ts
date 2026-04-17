@@ -568,9 +568,10 @@ function renderTokenActivity(events) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  // Match left & right padding so the chart reads symmetric (Y tick labels
-  // live in the left pad); bottom pad is just the X tick labels.
-  const padL = 26, padR = 26, padT = 6, padB = 12;
+  // padL holds the Y tick labels — its visible empty gap before the labels
+  // is only a few pixels, so padR matches that empty gap (not the whole
+  // padL column) for symmetric whitespace on both sides of the chart.
+  const padL = 26, padR = 4, padT = 6, padB = 12;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
