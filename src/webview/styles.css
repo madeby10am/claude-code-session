@@ -116,7 +116,34 @@ body::before {
   gap: 6px;
   transition: color 0.15s;
 }
-.section-header:hover { color: var(--accent); }
+/* Per-section hover color — each section gets its own neon tech accent. */
+#sessions-section        .section-header:hover,
+#sessions-section        .section-header:hover .section-chevron,
+#sessions-section        .section-header:hover .section-icon    { color: #3b82f6; }  /* blue */
+#usage-section           .section-header:hover,
+#usage-section           .section-header:hover .section-chevron,
+#usage-section           .section-header:hover .section-icon    { color: #f59e0b; }  /* amber */
+#token-activity-section  .section-header:hover,
+#token-activity-section  .section-header:hover .section-chevron,
+#token-activity-section  .section-header:hover .section-icon    { color: #10b981; }  /* emerald */
+#git-status-section      .section-header:hover,
+#git-status-section      .section-header:hover .section-chevron,
+#git-status-section      .section-header:hover .section-icon    { color: #f97316; }  /* orange */
+#recent-files-section    .section-header:hover,
+#recent-files-section    .section-header:hover .section-chevron,
+#recent-files-section    .section-header:hover .section-icon    { color: #8b5cf6; }  /* violet */
+#session-history-section .section-header:hover,
+#session-history-section .section-header:hover .section-chevron,
+#session-history-section .section-header:hover .section-icon    { color: #0ea5e9; }  /* sky */
+#mcp-section             .section-header:hover,
+#mcp-section             .section-header:hover .section-chevron,
+#mcp-section             .section-header:hover .section-icon    { color: #ec4899; }  /* magenta */
+#skills-section          .section-header:hover,
+#skills-section          .section-header:hover .section-chevron,
+#skills-section          .section-header:hover .section-icon    { color: #eab308; }  /* yellow */
+#cli-section             .section-header:hover,
+#cli-section             .section-header:hover .section-chevron,
+#cli-section             .section-header:hover .section-icon    { color: #14b8a6; }  /* teal */
 .section-icon {
   width: 12px;
   height: 12px;
@@ -131,7 +158,6 @@ body::before {
   margin-left: auto;
   flex-shrink: 0;
 }
-.section-header:hover .section-chevron { color: var(--accent); }
 .section-pin {
   width: 14px;
   height: 14px;
