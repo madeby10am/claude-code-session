@@ -3,7 +3,7 @@
   "publisher": "madeby10am",
   "displayName": "Claude Code Session",
   "description": "Monitor Claude Code sessions with a pixel art companion -- live activity badges, gradient border glows, token tracking, and an animated robot sidebar.",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
