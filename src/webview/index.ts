@@ -490,7 +490,7 @@ let _tokenWindowHours = TOKEN_WINDOW_DEFAULT;
 
 function fmtTokensShort(n) {
   if (!n || n <= 0) return '0';
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
   if (n >= 1_000)     return Math.round(n / 1_000) + 'k';
   return String(n);
 }
@@ -548,9 +548,9 @@ function renderTokenActivity(events) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  // Extra padding on the left for the rotated "Tokens" axis name, and at the
-  // bottom for the "Time" axis name under the tick labels.
-  const padL = 40, padR = 4, padT = 6, padB = 24;
+  // Just enough left padding for the widest Y tick ("15M" / "100k") and
+  // bottom padding for the "Time" axis name under the tick labels.
+  const padL = 26, padR = 4, padT = 6, padB = 24;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
@@ -644,19 +644,11 @@ function renderTokenActivity(events) {
     ctx.fillRect(x, padT + h - barH, barW, barH);
   }
 
-  // Axis names — rotated "Tokens" on the Y edge, "Time" under the X edge.
+  // X axis name under the tick labels.
   ctx.fillStyle = labelColor;
   ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
-
-  ctx.save();
-  ctx.translate(8, padT + h / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  ctx.fillText('Tokens', 0, 0);
-  ctx.restore();
-
   ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
   const timeLabel = 'Time';
   const tlw = ctx.measureText(timeLabel).width;
   ctx.fillText(timeLabel, padL + w / 2 - tlw / 2, cssH - 2);
