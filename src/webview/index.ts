@@ -635,50 +635,37 @@ function renderTokenActivity(events) {
     ctx.lineTo(xAt(last.ts), yAt(last.tokens));
   }
 
-  // Vertical gradient fill — green at the baseline (low) → red at the top
-  // (high). With anchored baseline points, the shape closes naturally along y=0.
-  const grad = ctx.createLinearGradient(0, padT, 0, padT + h);
-  grad.addColorStop(0.00, 'rgba(239,68,68,0.55)');
-  grad.addColorStop(0.25, 'rgba(245,158,11,0.42)');
-  grad.addColorStop(0.50, 'rgba(234,179,8,0.34)');
-  grad.addColorStop(0.75, 'rgba(101,163,13,0.28)');
-  grad.addColorStop(1.00, 'rgba(4,120,87,0.20)');
-
-  if (visible.length >= 1) {
-    ctx.save();
-    tracePath();
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
+  // Blue tier palette — light blue for small messages, dark blue for heavy ones.
+  function tierColor(tok) {
+    const frac = tok / niceMax;
+    if (frac <= 0.20) return '#bfdbfe'; // blue-200
+    if (frac <= 0.40) return '#93c5fd'; // blue-300
+    if (frac <= 0.60) return '#60a5fa'; // blue-400
+    if (frac <= 0.80) return '#2563eb'; // blue-600
+    return '#1e3a8a';                   // blue-900
   }
 
-  // Line on top — "black" that adapts via --text-bright (near-black in light
-  // mode, near-white in dark). Always drawn, even for an all-zero baseline.
-  const lineColor = (getComputedStyle(document.body).getPropertyValue('--text-bright') || '#111').trim();
+  // Horizontal gradient along the line — colored by the token value at each
+  // x-position so the line itself shows light→dark blue as values climb.
+  const lineGrad = ctx.createLinearGradient(padL, 0, padL + w, 0);
+  for (let i = 0; i < path.length; i++) {
+    const frac = Math.max(0, Math.min(1, (xAt(path[i].ts) - padL) / Math.max(1, w)));
+    lineGrad.addColorStop(frac, tierColor(path[i].tokens));
+  }
+
   ctx.lineWidth = 1.8;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = lineColor;
+  ctx.strokeStyle = lineGrad;
   tracePath();
   ctx.stroke();
 
-  // Dots — only when the view is sparse enough to read individual points.
-  if (visible.length > 0 && visible.length <= 30) {
-    function tierColor(tok) {
-      const frac = tok / niceMax;
-      if (frac <= 0.20) return '#047857';
-      if (frac <= 0.40) return '#65a30d';
-      if (frac <= 0.60) return '#eab308';
-      if (frac <= 0.80) return '#f59e0b';
-      return '#ef4444';
-    }
-    for (const e of visible) {
-      ctx.fillStyle = tierColor(e.tokens);
-      ctx.beginPath();
-      ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  // Dots at every real message, colored by the message's own tier.
+  for (const e of visible) {
+    ctx.fillStyle = tierColor(e.tokens);
+    ctx.beginPath();
+    ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   if (totalEl) {
