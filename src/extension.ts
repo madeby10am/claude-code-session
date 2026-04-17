@@ -21,19 +21,23 @@ export function activate(context: vscode.ExtensionContext) {
   let history: UsagePoint[] = context.globalState.get<UsagePoint[]>(HISTORY_KEY, []);
   history = history.filter(p => p && typeof p.ts === 'number' && typeof p.sessionPct === 'number');
 
-  // If we have very little live history, seed the chart from 7 days of JSONL activity.
-  // This gives the user an immediate "last week" shape; new live ticks append to this.
-  if (history.length < 10) {
+  // Most recent known plan tier (learned from the first successful live tick).
+  let currentPlanTier: string | undefined;
+
+  // Seed the chart from 7 days of JSONL activity, using the best plan info we have.
+  // After the first live tick we know the real plan and can re-seed with accurate quotas.
+  function seedFromBackfill(): void {
     try {
-      const seeded = backfillUsageHistory(7);
+      const seeded = backfillUsageHistory(7, currentPlanTier);
       if (seeded.length > 0) {
-        // Merge: historical points first, then any live points we already had.
-        const live = history.slice();
+        const live = history.filter(p => typeof p.sessionResetMs === 'number');
         history = seeded.concat(live).slice(-HISTORY_MAX);
         context.globalState.update(HISTORY_KEY, history);
       }
     } catch { /* back-fill is best-effort */ }
   }
+
+  if (history.length < 10) seedFromBackfill();
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -50,11 +54,21 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Send usage stats every 60s + append to history ring buffer
+  let refinedBackfill = false;
   const usageTick = () => {
     const usage = sessionManager!.computeUsageFromLogs();
     panel!.sendUsage(usage);
 
     if (usage.live) {
+      // If the plan just changed (or this is the first live tick), re-seed historical
+      // points using the right quotas so percentages reflect the real plan.
+      const planChanged = usage.planTier !== currentPlanTier;
+      currentPlanTier = usage.planTier;
+      if (planChanged && !refinedBackfill) {
+        seedFromBackfill();
+        refinedBackfill = true;
+      }
+
       history.push({
         ts:             Date.now(),
         sessionPct:     usage.sessionPct,
@@ -89,12 +103,12 @@ export function activate(context: vscode.ExtensionContext) {
   // Fresh data on sidebar open
   panel.onReady(() => { usageTick(); envTick(); });
 
-  // Clear persisted usage history when the user taps the reset button
+  // Reset button → clear persisted history, rebuild the 7-day curve from JSONL with
+  // the best plan info we have, then sample once so a live point lands on top.
   panel.onResetUsageHistory(() => {
     history = [];
-    context.globalState.update(HISTORY_KEY, history);
+    seedFromBackfill();
     panel!.sendUsageHistory(history);
-    // Also sample once so the chart isn't stuck in an empty state
     usageTick();
   });
 
