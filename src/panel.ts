@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { SessionState, UsageStats } from './sessionManager';
-import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
+import { ExtensionToWebview, WebviewToExtension, EnvData, UsagePoint } from './shared/messages';
 
 export class Panel implements vscode.WebviewViewProvider {
   private static instance: Panel | undefined;
@@ -103,6 +103,9 @@ export class Panel implements vscode.WebviewViewProvider {
       // Send cached usage immediately so bars don't flash 0%
       if (this.lastUsage) {
         this.postMessage({ type: 'usageUpdate', usage: this.lastUsage });
+      }
+      if (this.lastHistory.length > 0) {
+        this.postMessage({ type: 'usageHistory', points: this.lastHistory });
       }
       // Then trigger fresh fetch on top
       if (this.onReadyCallback) { this.onReadyCallback(); }
@@ -252,6 +255,12 @@ export class Panel implements vscode.WebviewViewProvider {
   sendUsage(usage: UsageStats): void {
     this.lastUsage = usage;
     this.postMessage({ type: 'usageUpdate', usage });
+  }
+
+  private lastHistory: UsagePoint[] = [];
+  sendUsageHistory(points: UsagePoint[]): void {
+    this.lastHistory = points;
+    this.postMessage({ type: 'usageHistory', points });
   }
 
   sendEnvData(data: EnvData): void {

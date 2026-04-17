@@ -74,6 +74,20 @@
     </div>
   </div>
 
+  <!-- USAGE TRENDS -->
+  <div class="section" id="usage-trends-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="15 7 21 7 21 13"/></svg>Usage Trends <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body framed gray">
+      <div class="usage-trends-legend">
+        <span class="legend-item"><span class="legend-swatch" style="background:#f59e0b;"></span>Session</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#22d3ee;"></span>Weekly</span>
+        <span id="usage-trends-range" class="legend-range">&mdash;</span>
+      </div>
+      <canvas id="usage-trends-canvas" width="400" height="100" style="width:100%;height:100px;display:block;"></canvas>
+      <div id="usage-trends-empty" class="cap-item" style="color:var(--text-muted);padding-top:6px;">Collecting usage data&hellip; points appear every 60s while VS Code is open.</div>
+    </div>
+  </div>
+
   <!-- GIT STATUS -->
   <div class="section" id="git-status-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>

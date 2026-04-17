@@ -343,6 +343,10 @@ window.addEventListener('message', e => {
     updateUsageMeters(msg.usage);
   }
 
+  if (msg.type === 'usageHistory') {
+    renderUsageTrends(msg.points || []);
+  }
+
   if (msg.type === 'darkMode') {
     applyDarkMode(msg.value);
   }
@@ -458,6 +462,90 @@ function updateTimeMarkers(usage) {
   if (weekMarker) weekMarker.style.left = weekTimePct + '%';
 
 }
+
+// ─── Usage Trends line chart ────────────────────────────────────────────────
+let _lastTrendPoints = [];
+
+function renderUsageTrends(points) {
+  _lastTrendPoints = points || [];
+  const canvas = document.getElementById('usage-trends-canvas');
+  const empty  = document.getElementById('usage-trends-empty');
+  const rangeEl = document.getElementById('usage-trends-range');
+  if (!canvas) return;
+
+  if (!points || points.length < 2) {
+    canvas.style.display = 'none';
+    if (empty) empty.style.display = '';
+    if (rangeEl) rangeEl.textContent = points && points.length === 1 ? '1 point' : '';
+    return;
+  }
+  canvas.style.display = 'block';
+  if (empty) empty.style.display = 'none';
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || 400;
+  const cssH = 100;
+  if (canvas.width !== cssW * dpr) canvas.width = cssW * dpr;
+  if (canvas.height !== cssH * dpr) canvas.height = cssH * dpr;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const padL = 4, padR = 4, padT = 8, padB = 10;
+  const w = cssW - padL - padR;
+  const h = cssH - padT - padB;
+
+  const tMin = points[0].ts;
+  const tMax = points[points.length - 1].ts;
+  const tSpan = Math.max(1, tMax - tMin);
+  const xAt = (ts) => padL + ((ts - tMin) / tSpan) * w;
+  const yAt = (pct) => padT + (1 - Math.max(0, Math.min(100, pct)) / 100) * h;
+
+  // Grid lines at 25/50/75/100%
+  const textDim = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.font = '8px ui-monospace, SFMono-Regular, monospace';
+  ctx.fillStyle = textDim;
+  for (const pct of [25, 50, 75, 100]) {
+    const y = yAt(pct);
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(padL + w, y);
+    ctx.stroke();
+    ctx.fillText(pct + '%', padL + 2, y - 2);
+  }
+
+  function drawLine(getY, stroke) {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = stroke;
+    ctx.beginPath();
+    for (let i = 0; i < points.length; i++) {
+      const x = xAt(points[i].ts);
+      const y = getY(points[i]);
+      if (i === 0) ctx.moveTo(x, y);
+      else         ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  drawLine(p => yAt(p.sessionPct), '#f59e0b');
+  drawLine(p => yAt(p.weeklyPct),  '#22d3ee');
+
+  if (rangeEl) {
+    const spanMin = Math.round(tSpan / 60000);
+    const spanLabel = spanMin < 60
+      ? spanMin + 'm'
+      : Math.round(spanMin / 60) + 'h ' + (spanMin % 60) + 'm';
+    rangeEl.textContent = spanLabel + ' \u00b7 ' + points.length + ' pts';
+  }
+}
+
+// Re-render the chart on resize so it stays crisp and proportional.
+window.addEventListener('resize', () => {
+  if (_lastTrendPoints.length > 0) renderUsageTrends(_lastTrendPoints);
+});
 
 // ─── Dark mode ─────────────────────────────────────────────────────────────
 function applyDarkMode(on) {
@@ -790,8 +878,8 @@ function saveLayoutState() {
   vscodeApi.setState({ sectionOrder: order, sectionCollapsed: collapsed, sectionPinned: pinned });
 }
 
-// On first load (no saved state), collapse every section except Sessions + Usage.
-const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section']);
+// On first load (no saved state), collapse every section except Sessions, Usage, and Usage Trends.
+const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section', 'usage-trends-section']);
 
 function applyDefaultCollapse() {
   document.querySelectorAll('#root > .section[draggable]').forEach(s => {

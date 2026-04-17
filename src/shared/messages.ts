@@ -40,11 +40,18 @@ export interface EnvData {
   clis:           CliInfo[];
 }
 
+export interface UsagePoint {
+  ts:         number;
+  sessionPct: number;
+  weeklyPct:  number;
+}
+
 export type ExtensionToWebview =
   | { type: 'sessionsUpdate'; sessions: SessionState[] }
   | { type: 'projectInfo';    data: ProjectInfo }
   | { type: 'envData';        data: EnvData }
   | { type: 'usageUpdate';    usage: UsageStats }
+  | { type: 'usageHistory';   points: UsagePoint[] }
   | { type: 'darkMode';       value: boolean };
 
 export type WebviewToExtension =

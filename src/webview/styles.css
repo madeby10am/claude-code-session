@@ -608,6 +608,29 @@ body:not(.dark) .time-marker { background: #111827; }
   font-weight: 700;
 }
 
+/* Usage Trends legend */
+.usage-trends-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+}
+.legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.legend-swatch {
+  width: 8px; height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+}
+.legend-range {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 9px;
+}
+
 /* CLI group labels */
 .cli-group-label {
   font-size: 9px;

@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
 import { Panel } from './panel';
+import { UsagePoint } from './shared/messages';
+
+const HISTORY_KEY = 'usageHistory';
+const HISTORY_MAX = 240; // 4h at 60s cadence
 
 let sessionManager: SessionManager | undefined;
 let panel: Panel | undefined;
@@ -11,6 +15,11 @@ export function activate(context: vscode.ExtensionContext) {
   sessionManager = new SessionManager((sessions) => {
     panel!.sendSessions(sessions);
   });
+
+  // Load persisted usage history (ring buffer capped at HISTORY_MAX)
+  let history: UsagePoint[] = context.globalState.get<UsagePoint[]>(HISTORY_KEY, []);
+  // Defensive: drop malformed entries from previous versions
+  history = history.filter(p => p && typeof p.ts === 'number' && typeof p.sessionPct === 'number');
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -26,10 +35,23 @@ export function activate(context: vscode.ExtensionContext) {
     })
   );
 
-  // Send usage stats every 30s
+  // Send usage stats every 60s + append to history ring buffer
   const usageTick = () => {
     const usage = sessionManager!.computeUsageFromLogs();
     panel!.sendUsage(usage);
+
+    if (usage.live) {
+      history.push({
+        ts:         Date.now(),
+        sessionPct: usage.sessionPct,
+        weeklyPct:  usage.weeklyPct,
+      });
+      if (history.length > HISTORY_MAX) {
+        history = history.slice(-HISTORY_MAX);
+      }
+      context.globalState.update(HISTORY_KEY, history);
+    }
+    panel!.sendUsageHistory(history);
   };
   usageTick();
   const usageTimer = setInterval(usageTick, 60_000);
