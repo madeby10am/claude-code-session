@@ -86,10 +86,13 @@
       <div id="token-activity-empty" class="cap-item" style="color:var(--text-muted);padding-top:2px;">No messages in the selected window.</div>
       <div class="token-activity-footer">
         <div id="token-window-filter">
-          <button class="token-window-btn" data-window="1"  data-active="false">1h</button>
-          <button class="token-window-btn" data-window="5"  data-active="true">5h</button>
-          <button class="token-window-btn" data-window="12" data-active="false">12h</button>
-          <button class="token-window-btn" data-window="24" data-active="false">24h</button>
+          <button class="token-window-btn" data-window="0.0833" data-active="false">5m</button>
+          <button class="token-window-btn" data-window="0.25"   data-active="false">15m</button>
+          <button class="token-window-btn" data-window="0.5"    data-active="false">30m</button>
+          <button class="token-window-btn" data-window="1"      data-active="false">1h</button>
+          <button class="token-window-btn" data-window="5"      data-active="true">5h</button>
+          <button class="token-window-btn" data-window="12"     data-active="false">12h</button>
+          <button class="token-window-btn" data-window="24"     data-active="false">24h</button>
         </div>
         <button class="card-refresh-btn" title="Refresh" onclick="event.stopPropagation();refreshTokenActivity();">&#x21bb;</button>
       </div>

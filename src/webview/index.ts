@@ -510,10 +510,30 @@ function niceCeil(n) {
 
 // Tick positions on the X axis for a given window in hours.
 function xAxisTicks(windowHours) {
-  if (windowHours <= 1)   return [{ hoursAgo: 1,   label: '1h ago' }, { hoursAgo: 0.5, label: '30m' }, { hoursAgo: 0, label: 'now' }];
-  if (windowHours <= 5)   return [{ hoursAgo: 5,   label: '5h ago' }, { hoursAgo: 3,   label: '3h' }, { hoursAgo: 1, label: '1h' }, { hoursAgo: 0, label: 'now' }];
-  if (windowHours <= 12)  return [{ hoursAgo: 12,  label: '12h ago' }, { hoursAgo: 8, label: '8h' }, { hoursAgo: 4, label: '4h' }, { hoursAgo: 0, label: 'now' }];
-  return                         [{ hoursAgo: 24,  label: '24h ago' }, { hoursAgo: 16, label: '16h' }, { hoursAgo: 8, label: '8h' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours < 0.1)  return [{ hoursAgo: 5/60,   label: '5m ago' },  { hoursAgo: 2.5/60,  label: '2m' },  { hoursAgo: 0, label: 'now' }];
+  if (windowHours < 0.3)  return [{ hoursAgo: 15/60,  label: '15m ago' }, { hoursAgo: 10/60,   label: '10m' }, { hoursAgo: 5/60, label: '5m' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours < 0.6)  return [{ hoursAgo: 30/60,  label: '30m ago' }, { hoursAgo: 20/60,   label: '20m' }, { hoursAgo: 10/60, label: '10m' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours <= 1)   return [{ hoursAgo: 1,      label: '1h ago' },  { hoursAgo: 0.5,     label: '30m' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours <= 5)   return [{ hoursAgo: 5,      label: '5h ago' },  { hoursAgo: 3,       label: '3h' },  { hoursAgo: 1, label: '1h' }, { hoursAgo: 0, label: 'now' }];
+  if (windowHours <= 12)  return [{ hoursAgo: 12,     label: '12h ago' }, { hoursAgo: 8,       label: '8h' },  { hoursAgo: 4, label: '4h' }, { hoursAgo: 0, label: 'now' }];
+  return                         [{ hoursAgo: 24,     label: '24h ago' }, { hoursAgo: 16,      label: '16h' }, { hoursAgo: 8, label: '8h' }, { hoursAgo: 0, label: 'now' }];
+}
+
+// Bucket count scales with the chosen window — finer slices for short views.
+function bucketCountFor(windowHours) {
+  if (windowHours < 0.1) return 10; // 5m  → ~30s bars
+  if (windowHours < 0.3) return 15; // 15m → ~1m bars
+  if (windowHours < 0.6) return 15; // 30m → ~2m bars
+  if (windowHours <= 1)  return 12; // 1h  → 5m bars
+  if (windowHours <= 5)  return 30; // 5h  → 10m bars
+  if (windowHours <= 12) return 24; // 12h → 30m bars
+  return 24;                        // 24h → 1h bars
+}
+
+// Label for the legend range ("last 30m" / "last 5h" / etc.).
+function windowLabel(h) {
+  if (h < 1) return Math.round(h * 60) + 'm';
+  return h + 'h';
 }
 
 // Window comes from the user's chip toggle, not the incoming message — the
@@ -527,7 +547,7 @@ function renderTokenActivity(events) {
   const rangeEl = document.getElementById('token-activity-range');
   if (!canvas) return;
 
-  if (rangeEl) rangeEl.textContent = 'last ' + _tokenWindowHours + 'h';
+  if (rangeEl) rangeEl.textContent = 'last ' + windowLabel(_tokenWindowHours);
 
   const now  = Date.now();
   const tMin = now - _tokenWindowHours * 60 * 60 * 1000;
@@ -548,9 +568,9 @@ function renderTokenActivity(events) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  // Just enough left padding for the widest Y tick ("15M" / "100k") and
-  // bottom padding for the "Time" axis name under the tick labels.
-  const padL = 26, padR = 4, padT = 6, padB = 24;
+  // Match left & right padding so the chart reads symmetric (Y tick labels
+  // live in the left pad); bottom pad is just the X tick labels.
+  const padL = 26, padR = 26, padT = 6, padB = 12;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
@@ -559,10 +579,9 @@ function renderTokenActivity(events) {
 
   // Bucketize: count how many bars we want for this window, then sum tokens
   // per bucket. Each bar = total tokens spent during that time slice.
-  const WINDOW_BUCKETS = { 1: 12, 5: 30, 12: 24, 24: 24 };
-  const numBuckets = WINDOW_BUCKETS[_tokenWindowHours] || 24;
-  const windowMs  = _tokenWindowHours * 60 * 60 * 1000;
-  const bucketMs  = windowMs / numBuckets;
+  const numBuckets = bucketCountFor(_tokenWindowHours);
+  const windowMs   = _tokenWindowHours * 60 * 60 * 1000;
+  const bucketMs   = windowMs / numBuckets;
 
   const buckets = new Array(numBuckets).fill(0);
   let totalTokens = 0;
@@ -673,14 +692,6 @@ function renderTokenActivity(events) {
     ctx.fill();
   }
 
-  // X axis name under the tick labels.
-  ctx.fillStyle = labelColor;
-  ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'left';
-  const timeLabel = 'Time';
-  const tlw = ctx.measureText(timeLabel).width;
-  ctx.fillText(timeLabel, padL + w / 2 - tlw / 2, cssH - 2);
 
   if (totalEl) {
     totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + visible.length + ' msgs';
@@ -704,11 +715,11 @@ function refreshTokenActivity() {
   const row = document.getElementById('token-window-filter');
   if (!row) return;
   row.querySelectorAll('.token-window-btn').forEach(btn => {
-    const hours = parseInt(btn.dataset.window, 10);
+    const hours = parseFloat(btn.dataset.window);
     btn.dataset.active = String(hours === _tokenWindowHours);
     btn.addEventListener('click', () => {
       _tokenWindowHours = hours;
-      row.querySelectorAll('.token-window-btn').forEach(b => b.dataset.active = String(parseInt(b.dataset.window, 10) === hours));
+      row.querySelectorAll('.token-window-btn').forEach(b => b.dataset.active = String(parseFloat(b.dataset.window) === hours));
       const prev = (vscodeApi.getState && vscodeApi.getState()) || {};
       vscodeApi.setState({ ...prev, tokenActivityWindow: hours });
       renderTokenActivity();
