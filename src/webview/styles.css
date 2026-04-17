@@ -659,6 +659,14 @@ body:not(.dark) .time-marker { background: #111827; }
   border-color: var(--text-bright);
 }
 
+/* Square chips that match the refresh button's shape/size. */
+#token-activity-section .token-window-btn {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  line-height: 1;
+}
+
 /* CLI group labels */
 .cli-group-label {
   font-size: 9px;

@@ -548,7 +548,9 @@ function renderTokenActivity(events) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
 
-  const padL = 30, padR = 4, padT = 6, padB = 14;
+  // Extra padding on the left for the rotated "Tokens" axis name, and at the
+  // bottom for the "Time" axis name under the tick labels.
+  const padL = 40, padR = 4, padT = 6, padB = 24;
   const w = cssW - padL - padR;
   const h = cssH - padT - padB;
 
@@ -620,17 +622,16 @@ function renderTokenActivity(events) {
     ctx.fillText(t.label, lx, padT + h + 11);
   }
 
-  // Blue tier palette — light blue for quiet buckets, dark blue for heavy ones.
-  function tierColor(tok) {
-    const frac = tok / niceMax;
-    if (frac <= 0.20) return '#bfdbfe'; // blue-200
-    if (frac <= 0.40) return '#93c5fd'; // blue-300
-    if (frac <= 0.60) return '#60a5fa'; // blue-400
-    if (frac <= 0.80) return '#2563eb'; // blue-600
-    return '#1e3a8a';                   // blue-900
-  }
+  // Chart-wide vertical gradient: green at baseline, yellow at ~75%, red only
+  // at the very top. Each bar is filled with this single gradient, so short
+  // bars stay green and only tall ones reach warm colors.
+  const barGrad = ctx.createLinearGradient(0, padT + h, 0, padT);
+  barGrad.addColorStop(0.00, '#047857'); // green at baseline
+  barGrad.addColorStop(0.50, '#16a34a'); // still green at mid
+  barGrad.addColorStop(0.75, '#eab308'); // yellow kicks in around 75%
+  barGrad.addColorStop(0.92, '#f59e0b'); // orange nearer the top
+  barGrad.addColorStop(1.00, '#ef4444'); // red right at the peak
 
-  // Bars — one per bucket, height = total tokens that bucket.
   const slotW = w / numBuckets;
   const barGap = Math.max(1, slotW * 0.15);
   const barW = Math.max(1, slotW - barGap);
@@ -639,9 +640,26 @@ function renderTokenActivity(events) {
     if (v <= 0) continue;
     const barH = (v / niceMax) * h;
     const x = padL + i * slotW + barGap / 2;
-    ctx.fillStyle = tierColor(v);
+    ctx.fillStyle = barGrad;
     ctx.fillRect(x, padT + h - barH, barW, barH);
   }
+
+  // Axis names — rotated "Tokens" on the Y edge, "Time" under the X edge.
+  ctx.fillStyle = labelColor;
+  ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
+
+  ctx.save();
+  ctx.translate(8, padT + h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('Tokens', 0, 0);
+  ctx.restore();
+
+  ctx.textBaseline = 'alphabetic';
+  const timeLabel = 'Time';
+  const tlw = ctx.measureText(timeLabel).width;
+  ctx.fillText(timeLabel, padL + w / 2 - tlw / 2, cssH - 2);
 
   if (totalEl) {
     totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + visible.length + ' msgs';
