@@ -610,14 +610,16 @@ body:not(.dark) .time-marker { background: #111827; }
   font-weight: 700;
 }
 
-/* Token Activity summary line above the chart */
+/* Token Activity — compact layout */
+#token-activity-section .section-body.framed { padding: 8px 10px; }
+
 .token-activity-summary {
   display: flex;
   align-items: baseline;
   gap: 8px;
   font-size: 11px;
   color: var(--text);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 .token-activity-summary #token-activity-total {
   font-family: var(--mono);
@@ -628,6 +630,33 @@ body:not(.dark) .time-marker { background: #111827; }
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 9px;
+}
+
+/* Footer: window chips + refresh, bottom-right */
+.token-activity-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+}
+#token-window-filter {
+  display: flex;
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+
+/* Scoped override: chips and refresh inside Token Activity use black/white,
+   never the cyan accent. */
+#token-activity-section .token-window-btn:hover,
+#token-activity-section .card-refresh-btn:hover {
+  border-color: var(--text-bright);
+  color: var(--text-bright);
+}
+#token-activity-section .token-window-btn[data-active="true"] {
+  background: var(--text-bright);
+  color: var(--bg);
+  border-color: var(--text-bright);
 }
 
 /* CLI group labels */

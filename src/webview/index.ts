@@ -569,7 +569,8 @@ function renderTokenActivity(events) {
   const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
   const isDark = document.body.classList.contains('dark') || !document.body.classList.contains('light');
-  const gridColor  = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)';
+  // Faint black lines in both modes — a bit more visible than before.
+  const gridColor  = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
   const labelColor = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
 
   // Horizontal grid + Y-axis labels (tokens)
@@ -611,24 +612,36 @@ function renderTokenActivity(events) {
     ctx.fillText(t.label, lx, padT + h + 11);
   }
 
-  // Connected line through all events in chronological order
-  ctx.strokeStyle = '#f59e0b';
+  // Color each point by its token size relative to the Y-axis max — small
+  // messages read green, token-heavy spikes read red.
+  function tierColor(tok) {
+    const frac = tok / niceMax;
+    if (frac <= 0.20) return '#047857'; // green
+    if (frac <= 0.40) return '#65a30d'; // yellow-green
+    if (frac <= 0.60) return '#eab308'; // yellow
+    if (frac <= 0.80) return '#f59e0b'; // orange
+    return '#ef4444';                   // red
+  }
+
+  // Line — each segment colored by the warmer of its two endpoints so spikes
+  // pop visually and valleys recede.
   ctx.lineWidth = 1.5;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   if (visible.length >= 2) {
-    ctx.beginPath();
-    for (let i = 0; i < visible.length; i++) {
-      const e = visible[i];
-      const x = xAt(e.ts), y = yAt(e.tokens);
-      if (i === 0) ctx.moveTo(x, y);
-      else         ctx.lineTo(x, y);
+    for (let i = 1; i < visible.length; i++) {
+      const a = visible[i - 1], b = visible[i];
+      const warmer = a.tokens >= b.tokens ? a : b;
+      ctx.strokeStyle = tierColor(warmer.tokens);
+      ctx.beginPath();
+      ctx.moveTo(xAt(a.ts), yAt(a.tokens));
+      ctx.lineTo(xAt(b.ts), yAt(b.tokens));
+      ctx.stroke();
     }
-    ctx.stroke();
   }
-  // Dots at each data point
-  ctx.fillStyle = '#f59e0b';
+  // Dots — each one colored by its own tier
   for (const e of visible) {
+    ctx.fillStyle = tierColor(e.tokens);
     ctx.beginPath();
     ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
     ctx.fill();
