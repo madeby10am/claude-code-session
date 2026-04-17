@@ -1,0 +1,144 @@
+<div id="root">
+
+  <!-- STICKY TOP -->
+  <div id="sticky-top">
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <span class="header-project" id="pi-workspace"></span>
+        <span class="header-path" id="pi-path" onclick="if(this.dataset.path)vscodeApi.postMessage({type:'openFolder',path:this.dataset.path})"></span>
+      </div>
+      <div class="header-right" style="display:flex;align-items:center;gap:6px;">
+        <button class="dark-toggle" id="dark-toggle" data-on="false" title="Toggle dark mode">
+          <svg class="toggle-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;position:absolute;left:3px;top:3px;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg class="toggle-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;position:absolute;right:3px;top:3px;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+    <!-- ROBOT STATUS BAR -->
+    <div class="robot-bar">
+      <canvas class="robot-bar-canvas" id="robot-bar-canvas" width="48" height="48"></canvas>
+      <div class="robot-bar-bubble" id="robot-bar-bubble">
+        <span class="robot-bar-text" id="robot-bar-text">Idle</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      </div>
+    </div>
+
+  </div><!-- /sticky-top -->
+
+  <!-- SESSIONS -->
+  <div class="section" id="sessions-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">
+      <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Sessions
+      <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
+    </div>
+    <div class="section-body" id="session-list">
+      <div class="empty-state" id="empty-msg">
+        <div class="empty-icon">&#x25CB;</div>
+        No active Claude session
+      </div>
+    </div>
+  </div>
+
+  <!-- USAGE METERS -->
+  <div class="section" id="usage-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)">
+      <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/></svg>Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span>
+    </div>
+    <div class="section-body">
+      <div class="usage-card">
+        <div class="usage-meter">
+          <div class="usage-meter-label">
+            <span class="stat-label">Session</span>
+            <span class="stat-value" id="usage-today-value">&mdash;</span>
+          </div>
+          <div class="context-bar-track" style="position:relative;overflow:visible;">
+            <div class="context-bar-fill" id="usage-today-bar" data-level="green" style="width:0%"></div>
+            <div class="time-marker" id="usage-today-marker"></div>
+          </div>
+        </div>
+        <div class="usage-meter" style="margin-top:8px;">
+          <div class="usage-meter-label">
+            <span class="stat-label">This Week</span>
+            <span class="stat-value" id="usage-week-value">&mdash;</span>
+          </div>
+          <div class="context-bar-track" style="position:relative;overflow:visible;">
+            <div class="context-bar-fill" id="usage-week-bar" data-level="green" style="width:0%"></div>
+            <div class="time-marker" id="usage-week-marker"></div>
+          </div>
+        </div>
+        <div class="session-time">
+          <span class="stat-value" id="usage-plan-label" style="font-size:10px;">&mdash;</span>
+          <button class="card-refresh-btn" title="Refresh all" onclick="event.stopPropagation();refreshUsage();">&#x21bb;</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GIT STATUS -->
+  <div class="section" id="git-status-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="git-status-body">
+      <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Visibility</span><span class="stat-value" id="git-visibility">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Branches</span><span class="stat-value" id="git-branch-count">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Commits</span><span class="stat-value" id="git-total-commits">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Contributors</span><span class="stat-value" id="git-contributors">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Last Commit</span><span class="stat-value" id="git-last-commit" title="">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Committed</span><span class="stat-value" id="git-last-commit-date">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Last Push</span><span class="stat-value" id="git-last-pushed">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Created</span><span class="stat-value" id="git-created">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Stars</span><span class="stat-value" id="git-stars">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Forks</span><span class="stat-value" id="git-forks">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Issues</span><span class="stat-value" id="git-issues">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">PRs</span><span class="stat-value" id="git-prs">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Tags</span><span class="stat-value" id="git-tags">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Stashes</span><span class="stat-value" id="git-stashes">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Size</span><span class="stat-value" id="git-size">&mdash;</span></div>
+    </div>
+  </div>
+
+  <!-- RECENT FILES -->
+  <div class="section" id="recent-files-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Recent Files <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="recent-files-list">
+      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
+    </div>
+  </div>
+
+  <!-- SESSION HISTORY -->
+  <div class="section" id="session-history-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Session History <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="session-history-list">
+      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
+    </div>
+  </div>
+
+  <!-- MCP SERVERS -->
+  <div class="section" id="mcp-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>MCP Servers <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body" id="mcp-list">
+      <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
+    </div>
+  </div>
+
+  <!-- SKILLS -->
+  <div class="section" id="skills-section" draggable="true">
+    <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><span class="section-chevron">&#x25BE;</span></div>
+    <div class="section-body">
+      <input type="text" id="skills-search" placeholder="Search skills..." style="width:100%;padding:4px 8px;margin-bottom:6px;font-size:11px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa;color:#333;font-family:inherit;outline:none;">
+      <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:8px;">
+        <button class="skills-filter-btn" data-filter="all" data-active="true">All</button>
+        <button class="skills-filter-btn" data-filter="user" data-active="false">User</button>
+        <button class="skills-filter-btn" data-filter="plugin" data-active="false">Plugin</button>
+      </div>
+      <div id="skills-list">
+        <div class="cap-item" style="color:#a0a0a0;">Loading&hellip;</div>
+      </div>
+    </div>
+  </div>
+
+
+</div>

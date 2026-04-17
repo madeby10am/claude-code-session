@@ -1,190 +1,51 @@
 import * as fs   from 'fs';
-import * as os   from 'os';
 import * as path from 'path';
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
+import {
+  SessionEntry,
+  SessionState,
+  UsageStats,
+  HUE_STEPS,
+} from './session/types';
+import {
+  defaultSession,
+  extractLastField,
+  parseLines,
+  getRecentFilesFromLog,
+} from './session/jsonlParser';
+import {
+  computeUsageFromLogs as computeUsageFromLogsImpl,
+} from './session/usageCompute';
+import {
+  CLAUDE_PROJECTS_DIR,
+  CLAUDE_SETTINGS_PATH,
+  getMcpServers as getMcpServersImpl,
+  getSkills as getSkillsImpl,
+  SkillInfo,
+} from './session/claudeEnvironment';
+import {
+  clearEntryTimers,
+  resetTimers,
+} from './session/activityTimers';
 
-export type ActivityState =
-  | 'idle'
-  | 'thinking'
-  | 'user_sent'
-  | 'tooling'
-  | 'responding'
-  | 'sleeping';
+// Re-export types so existing imports (panel.ts, extension.ts) keep working.
+export type { ActivityState, SessionState, UsageStats } from './session/types';
 
-export interface SessionState {
-  sessionId:      string;
-  slug:           string;
-  projectName:    string;
-  chatTitle:      string;
-  cwd:            string;
-  gitBranch:      string;
-  model:          string;
-  version:        string;
-  entrypoint:     string;
-  permissionMode: string;
-  speed:          string;
-  effort:         string;
-  inputTokens:    number;
-  outputTokens:   number;
-  lastInputTokens:  number;
-  lastOutputTokens: number;
-  contextPct:     number;
-  currentFile:    string;
-  turnCount:      number;
-  toolUseCount:   number;
-  lastAction:     string;
-  needsInput:     boolean;
-  activity:       ActivityState;
-  lastSeen:       number;
-  startedAt:      number;
-  hueShift:       number;
-}
-
-export interface UsageStats {
-  sessionPct:       number;
-  weeklyPct:        number;
-  sessionResetMs:   number;
-  weeklyResetMs:    number;
-  sessionWindowMs:  number;
-  weeklyWindowMs:   number;
-  live:             boolean;
-  planTier:         string;  // e.g. "Max 5x", "Pro", "Free"
-  overageInUse:     boolean;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const CLAUDE_DIR            = path.join(os.homedir(), '.claude');
-const CLAUDE_PROJECTS_DIR  = path.join(CLAUDE_DIR, 'projects');
-const CLAUDE_SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json');
-const HEAD_BYTES            = 1024;
-const TAIL_BYTES            = 4096;
-const ACTIVE_WINDOW_MS      = 60 * 60 * 1000;      // 1 hr: prune sessions older than this
-const SEED_WINDOW_MS        = 60 * 60 * 1000;      // 1 hr: scan files this old at startup
-const IDLE_TIMEOUT_MS       = 10 * 1000;            // 10 sec: responding → idle
-const SLEEP_TIMEOUT_MS      = 2  * 60 * 1000;       // 2  min: idle → sleeping
-const PRUNE_INTERVAL_MS     = 5  * 60 * 1000;       // 5  min
-const SYNC_INTERVAL_MS      = 3  * 1000;            // 3  sec: detect deleted files
-const DEBOUNCE_MS           = 100;
-
-const CONTEXT_LIMITS: Record<string, number> = {
-  'claude-opus-4-6':   1_000_000,
-  'claude-sonnet-4-6': 1_000_000,
-  'claude-haiku-4-5':  200_000,
-};
-
-function getContextLimit(model: string): number {
-  return CONTEXT_LIMITS[model] ?? 200_000;
-}
-
-const HUE_STEPS = [0, 45, 120, 200, 270, 330, 160, 80];
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function toProjectName(slug: string): string {
-  const parts = slug.replace(/^-/, '').split('-');
-  const meaningful = parts.filter(Boolean).slice(-3);
-  return meaningful
-    .map(p => p.charAt(0).toUpperCase() + p.slice(1))
-    .join(' ');
-}
-
-/** Find the last occurrence of `marker` in a JSONL string, parse its line, and return `field`. */
-function extractLastField(content: string, marker: string, field: string): string | undefined {
-  const idx = content.lastIndexOf(marker);
-  if (idx === -1) { return undefined; }
-  const lineStart = content.lastIndexOf('\n', idx) + 1;
-  const lineEnd   = content.indexOf('\n', idx);
-  const line = content.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
-  if (!line) { return undefined; }
-  try {
-    return JSON.parse(line)[field] as string | undefined;
-  } catch { return undefined; }
-}
-
-function defaultSession(
-  sessionId: string,
-  slug:      string,
-  hueShift:  number
-): SessionState {
-  return {
-    sessionId,
-    slug,
-    projectName:  toProjectName(slug),
-    chatTitle:      '',
-    cwd:            '',
-    gitBranch:      '',
-    model:          '',
-    version:        '',
-    entrypoint:     '',
-    permissionMode: '',
-    speed:          '',
-    effort:         '',
-    inputTokens:    0,
-    outputTokens:   0,
-    lastInputTokens:  0,
-    lastOutputTokens: 0,
-    contextPct:     0,
-    currentFile:    '',
-    turnCount:      0,
-    toolUseCount:   0,
-    lastAction:     '',
-    needsInput:     false,
-    activity:       'idle',
-    lastSeen:     Date.now(),
-    startedAt:    Date.now(),
-    hueShift,
-  };
-}
-
-function humanizeToolUse(name: string, input: Record<string, unknown>): string {
-  switch (name) {
-    case 'Read':  return `Reading ${path.basename(String(input['file_path'] || ''))}`;
-    case 'Edit':  return `Editing ${path.basename(String(input['file_path'] || ''))}`;
-    case 'Write': return `Writing ${path.basename(String(input['file_path'] || ''))}`;
-    case 'Bash': {
-      const cmd = String(input['command'] || '');
-      return `Running ${cmd.slice(0, 30)}${cmd.length > 30 ? '...' : ''}`;
-    }
-    case 'Grep':  return `Searching for ${String(input['pattern'] || '')}`;
-    case 'Glob':  return `Finding ${String(input['pattern'] || '')}`;
-    case 'Agent': return String(input['description'] || 'Delegating task');
-    default:      return name;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Internal bookkeeping
-// ---------------------------------------------------------------------------
-
-interface SessionEntry {
-  state:       SessionState;
-  fileOffset:  number;
-  filePath:    string;
-  idleTimer:   ReturnType<typeof setTimeout> | null;
-  sleepTimer:  ReturnType<typeof setTimeout> | null;
-}
-
-// ---------------------------------------------------------------------------
-// SessionManager
-// ---------------------------------------------------------------------------
+const HEAD_BYTES          = 1024;
+const TAIL_BYTES          = 4096;
+const ACTIVE_WINDOW_MS    = 60 * 60 * 1000;      // 1 hr: prune sessions older than this
+const SEED_WINDOW_MS      = 60 * 60 * 1000;      // 1 hr: scan files this old at startup
+const PRUNE_INTERVAL_MS   = 5 * 60 * 1000;       // 5 min
+const SYNC_INTERVAL_MS    = 3 * 1000;            // 3  sec: detect deleted files
+const DEBOUNCE_MS         = 100;
 
 export class SessionManager {
-  private readonly sessions: Map<string, SessionState>    = new Map();
-  private readonly entries:  Map<string, SessionEntry>    = new Map();
+  private readonly sessions: Map<string, SessionState> = new Map();
+  private readonly entries:  Map<string, SessionEntry> = new Map();
+  private readonly watchers: Map<string, fs.FSWatcher> = new Map();
 
-  /** fs.watch handles keyed by the path being watched */
-  private readonly watchers: Map<string, fs.FSWatcher>    = new Map();
-
-  private hueIndex   = 0;
-  private debounceId: ReturnType<typeof setTimeout> | null = null;
+  private hueIndex    = 0;
+  private debounceId: ReturnType<typeof setTimeout>  | null = null;
   private pruneId:    ReturnType<typeof setInterval> | null = null;
   private syncId:     ReturnType<typeof setInterval> | null = null;
   private globalEffort = '';
@@ -200,57 +61,19 @@ export class SessionManager {
   }
 
   getRecentFiles(sessionId?: string): string[] {
-    // Find the most recent session if no ID given
     const id = sessionId || this.getMostRecentSessionId();
     if (!id) { return []; }
-
     const entry = this.entries.get(id);
     if (!entry) { return []; }
-
-    try {
-      const content = fs.readFileSync(entry.filePath, 'utf-8');
-      const files: string[] = [];
-      const seen = new Set<string>();
-
-      for (const line of content.split('\n')) {
-        if (!line.includes('"tool_use"')) { continue; }
-        try {
-          const obj = JSON.parse(line);
-          if (obj.type !== 'assistant') { continue; }
-          const blocks = obj.message?.content;
-          if (!Array.isArray(blocks)) { continue; }
-          for (const b of blocks) {
-            if (b.type !== 'tool_use') { continue; }
-            const name = b.name;
-            if (name === 'Read' || name === 'Edit' || name === 'Write') {
-              const fp = b.input?.file_path;
-              if (fp && typeof fp === 'string') {
-                const base = path.basename(fp);
-                if (!seen.has(base)) {
-                  seen.add(base);
-                  files.push(base);
-                }
-              }
-            }
-          }
-        } catch { /* skip */ }
-      }
-      return files.slice(-10);
-    } catch { return []; }
+    return getRecentFilesFromLog(entry.filePath);
   }
 
   getMcpServers(): string[] {
-    const servers: string[] = [];
-    try {
-      const globalMcp = path.join(CLAUDE_DIR, 'mcp.json');
-      if (fs.existsSync(globalMcp)) {
-        const data = JSON.parse(fs.readFileSync(globalMcp, 'utf-8'));
-        if (data.mcpServers) {
-          servers.push(...Object.keys(data.mcpServers));
-        }
-      }
-    } catch { /* ignore */ }
-    return servers;
+    return getMcpServersImpl();
+  }
+
+  getSkills(): SkillInfo[] {
+    return getSkillsImpl();
   }
 
   getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {
@@ -265,75 +88,8 @@ export class SessionManager {
       }));
   }
 
-  getSkills(): { name: string; source: string; description: string }[] {
-    const skills: { name: string; source: string; description: string }[] = [];
-    const seen = new Set<string>();
-
-    const parseDescription = (filePath: string): string => {
-      try {
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const match = content.match(/description:\s*>?\s*\n?\s*(.+?)(?:\n\S|\n---)/s);
-        if (match) {
-          return match[1].replace(/\n\s*/g, ' ').trim().slice(0, 120);
-        }
-        const singleLine = content.match(/description:\s*["']?(.+?)["']?\s*$/m);
-        if (singleLine) {
-          return singleLine[1].trim().slice(0, 120);
-        }
-      } catch { /* ignore */ }
-      return '';
-    };
-
-    // User skills
-    try {
-      const userSkillsDir = path.join(CLAUDE_DIR, 'skills');
-      if (fs.existsSync(userSkillsDir)) {
-        for (const name of fs.readdirSync(userSkillsDir)) {
-          const skillFile = path.join(userSkillsDir, name, 'SKILL.md');
-          if (fs.existsSync(skillFile) && !seen.has(name)) {
-            seen.add(name);
-            skills.push({ name, source: 'user', description: parseDescription(skillFile) });
-          }
-        }
-      }
-    } catch { /* ignore */ }
-
-    // Plugin skills: cache/<vendor>/<plugin>/<version>/skills/<name>/SKILL.md
-    try {
-      const cacheDir = path.join(CLAUDE_DIR, 'plugins', 'cache');
-      if (fs.existsSync(cacheDir)) {
-        for (const vendor of fs.readdirSync(cacheDir)) {
-          const vendorDir = path.join(cacheDir, vendor);
-          try {
-            if (!fs.statSync(vendorDir).isDirectory()) { continue; }
-            for (const plugin of fs.readdirSync(vendorDir)) {
-              const pluginDir = path.join(vendorDir, plugin);
-              try {
-                if (!fs.statSync(pluginDir).isDirectory()) { continue; }
-                const candidates = [path.join(pluginDir, 'skills')];
-                for (const version of fs.readdirSync(pluginDir)) {
-                  candidates.push(path.join(pluginDir, version, 'skills'));
-                }
-                for (const skillsDir of candidates) {
-                  try {
-                    if (!fs.existsSync(skillsDir) || !fs.statSync(skillsDir).isDirectory()) { continue; }
-                    for (const name of fs.readdirSync(skillsDir)) {
-                      const sf = path.join(skillsDir, name, 'SKILL.md');
-                      if (!seen.has(name) && fs.existsSync(sf)) {
-                        seen.add(name);
-                        skills.push({ name, source: 'plugin', description: parseDescription(sf) });
-                      }
-                    }
-                  } catch { /* ignore */ }
-                }
-              } catch { /* ignore */ }
-            }
-          } catch { /* ignore */ }
-        }
-      }
-    } catch { /* ignore */ }
-
-    return skills.sort((a, b) => a.name.localeCompare(b.name));
+  computeUsageFromLogs(): UsageStats {
+    return computeUsageFromLogsImpl();
   }
 
   private getMostRecentSessionId(): string | undefined {
@@ -344,129 +100,37 @@ export class SessionManager {
     return best?.sessionId;
   }
 
-  /**
-   * Fetch live usage data by making a minimal API call to read rate limit headers.
-   * Uses the OAuth token from the macOS Keychain (stored by Claude Code CLI).
-   */
-  computeUsageFromLogs(): UsageStats {
-    try {
-      const { execFileSync } = require('child_process');
-
-      // Read OAuth token from macOS Keychain
-      const raw = execFileSync(
-        'security',
-        ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-        { encoding: 'utf8', timeout: 3000 }
-      ).trim();
-      if (!raw) { throw new Error('no credentials'); }
-      const creds = JSON.parse(raw);
-      const oauth = creds?.claudeAiOauth;
-      const token = oauth?.accessToken;
-      if (!token) { throw new Error('no token'); }
-
-      // Extract plan tier
-      const tierRaw = (oauth?.rateLimitTier || '') as string;
-      const sub = (oauth?.subscriptionType || '') as string;
-      let planTier = 'Free';
-      if (tierRaw.includes('max_20x'))     planTier = 'Max 20x';
-      else if (tierRaw.includes('max_5x')) planTier = 'Max 5x';
-      else if (tierRaw.includes('max'))    planTier = 'Max';
-      else if (sub === 'pro')              planTier = 'Pro';
-
-      // Make a minimal 1-token Haiku call to get rate limit headers
-      const result = execFileSync(
-        'node',
-        ['-e', `
-const https=require('https');
-const body=JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'h'}]});
-const req=https.request({hostname:'api.anthropic.com',path:'/v1/messages',method:'POST',headers:{'x-api-key':'${token}','anthropic-version':'2023-06-01','Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
-  const h=res.headers;
-  const out={sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10),ov:h['anthropic-ratelimit-unified-overage-in-use']==='true'};
-  let d='';res.on('data',c=>d+=c);res.on('end',()=>console.log(JSON.stringify(out)));
-});
-req.on('error',()=>console.log('{}'));
-req.write(body);req.end();
-`],
-        { encoding: 'utf8', timeout: 10000 }
-      ).trim();
-
-      if (result) {
-        const d = JSON.parse(result);
-        const nowSec = Math.floor(Date.now() / 1000);
-        return {
-          sessionPct:      Math.round(d.sp * 100),
-          weeklyPct:       Math.round(d.wp * 100),
-          sessionResetMs:  Math.max(0, (d.sr - nowSec) * 1000),
-          weeklyResetMs:   Math.max(0, (d.wr - nowSec) * 1000),
-          sessionWindowMs: 5 * 60 * 60 * 1000,
-          weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
-          live:            true,
-          planTier,
-          overageInUse:    d.ov === true,
-        };
-      }
-    } catch { /* credentials or API unavailable */ }
-
-    return {
-      sessionPct: 0,
-      weeklyPct:  0,
-      sessionResetMs: 0,
-      weeklyResetMs:  0,
-      sessionWindowMs: 5 * 60 * 60 * 1000,
-      weeklyWindowMs:  7 * 24 * 60 * 60 * 1000,
-      live: false,
-      planTier: '',
-      overageInUse: false,
-    };
-  }
-
   dispose(): void {
-    // Cancel debounce
     if (this.debounceId !== null) {
       clearTimeout(this.debounceId);
       this.debounceId = null;
     }
-
-    // Cancel prune sweep
     if (this.pruneId !== null) {
       clearInterval(this.pruneId);
       this.pruneId = null;
     }
-
-    // Cancel sync sweep
     if (this.syncId !== null) {
       clearInterval(this.syncId);
       this.syncId = null;
     }
-
-    // Cancel all timers
     for (const entry of this.entries.values()) {
-      this.clearEntryTimers(entry);
+      clearEntryTimers(entry);
     }
-
-    // Close all fs.watch handles
     for (const [watchPath, watcher] of this.watchers.entries()) {
       try { watcher.close(); } catch { /* ignore */ }
       this.watchers.delete(watchPath);
     }
-
     this.entries.clear();
     this.sessions.clear();
   }
 
-  // -------------------------------------------------------------------------
-  // Init
-  // -------------------------------------------------------------------------
-
   private init(): void {
-    // If projects dir doesn't exist, bail silently
     try {
       if (!fs.existsSync(CLAUDE_PROJECTS_DIR)) { return; }
     } catch {
       return;
     }
 
-    // Startup scan
     try {
       const slugs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
       for (const slug of slugs) {
@@ -481,26 +145,16 @@ req.write(body);req.end();
       }
     } catch { /* ignore */ }
 
-    // Read global effort from settings
     this.readGlobalEffort();
     this.watchSettings();
 
-    // Emit seeded state so webview gets data immediately
     this.scheduleUpdate();
 
-    // Watch projects root for new project dirs appearing
     this.watchProjectsRoot();
 
-    // Periodic prune sweep
     this.pruneId = setInterval(() => this.pruneInactive(), PRUNE_INTERVAL_MS);
-
-    // Fast sync: detect deleted files every 3s
-    this.syncId = setInterval(() => this.syncDeletedFiles(), SYNC_INTERVAL_MS);
+    this.syncId  = setInterval(() => this.syncDeletedFiles(), SYNC_INTERVAL_MS);
   }
-
-  // -------------------------------------------------------------------------
-  // Global settings (effort level)
-  // -------------------------------------------------------------------------
 
   private readGlobalEffort(): void {
     try {
@@ -518,7 +172,6 @@ req.write(body);req.end();
         const prev = this.globalEffort;
         this.readGlobalEffort();
         if (prev !== this.globalEffort) {
-          // Apply to all active sessions
           for (const s of this.sessions.values()) {
             s.effort = this.globalEffort;
           }
@@ -531,10 +184,6 @@ req.write(body);req.end();
       this.watchers.set(CLAUDE_SETTINGS_PATH, watcher);
     } catch { /* ignore */ }
   }
-
-  // -------------------------------------------------------------------------
-  // Seeding (startup)
-  // -------------------------------------------------------------------------
 
   private seedProjectDir(slug: string, slugDir: string): void {
     let jsonlFiles: string[] = [];
@@ -553,12 +202,10 @@ req.write(body);req.end();
 
         const size = stat.size;
 
-        // Read head (for ai-title) and tail (for recent state)
         const fd = fs.openSync(filePath, 'r');
         let headRaw = '';
         let tailRaw = '';
         try {
-          // Head: first HEAD_BYTES
           const headLen = Math.min(size, HEAD_BYTES);
           if (headLen > 0) {
             const headBuf = Buffer.alloc(headLen);
@@ -566,7 +213,6 @@ req.write(body);req.end();
             headRaw = headBuf.toString('utf8');
           }
 
-          // Tail: last TAIL_BYTES (skip if file small enough that head covers it)
           const tailStart = Math.max(0, size - TAIL_BYTES);
           if (tailStart > headLen) {
             const tailLen = size - tailStart;
@@ -578,7 +224,6 @@ req.write(body);req.end();
           fs.closeSync(fd);
         }
 
-        // Derive sessionId from filename (without extension)
         const sessionId = path.basename(file, '.jsonl');
         const hueShift  = this.nextHue();
         const state = defaultSession(sessionId, slug, hueShift);
@@ -594,34 +239,27 @@ req.write(body);req.end();
         this.entries.set(sessionId, entry);
         this.sessions.set(sessionId, entry.state);
 
-        // Parse head first, then tail (recent activity)
-        this.parseLines(headRaw, entry);
+        const rekey = this.makeRekeyCallback(entry);
+        parseLines(headRaw, entry, rekey);
         if (tailRaw) {
-          this.parseLines(tailRaw, entry);
+          parseLines(tailRaw, entry, rekey);
         }
 
-        // ai-title can appear anywhere in the file — scan for it if not found
         if (!entry.state.chatTitle) {
           this.scanForTitle(filePath, entry);
         }
 
-        // Set correct initial activity based on how old the last entry actually is
         const lastSeenAge = now - entry.state.lastSeen;
-        if (lastSeenAge > SLEEP_TIMEOUT_MS) {
+        if (lastSeenAge > 2 * 60 * 1000) {
           entry.state.activity = 'sleeping';
-          // No timers — prune sweep will remove it once past ACTIVE_WINDOW_MS
         } else {
-          this.resetTimers(entry);
+          resetTimers(entry, () => this.onEntryTimerChange(entry));
         }
 
       } catch { /* ignore bad file */ }
     }
   }
 
-  /**
-   * Scan an entire JSONL file for the last title line (custom-title or ai-title).
-   * custom-title (user rename) takes priority over ai-title (auto-generated).
-   */
   private scanForTitle(filePath: string, entry: SessionEntry): void {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
@@ -630,10 +268,6 @@ req.write(body);req.end();
       if (title) { entry.state.chatTitle = title; }
     } catch { /* file read error */ }
   }
-
-  // -------------------------------------------------------------------------
-  // Watching
-  // -------------------------------------------------------------------------
 
   private watchProjectsRoot(): void {
     if (this.watchers.has(CLAUDE_PROJECTS_DIR)) { return; }
@@ -646,7 +280,6 @@ req.write(body);req.end();
           if (!stat.isDirectory()) { return; }
         } catch { return; }
 
-        // New project dir
         if (!this.watchers.has(slugDir)) {
           this.watchProjectDir(filename, slugDir);
         }
@@ -677,14 +310,9 @@ req.write(body);req.end();
     } catch { /* ignore */ }
   }
 
-  // -------------------------------------------------------------------------
-  // File change handler
-  // -------------------------------------------------------------------------
-
   private handleFileChange(slug: string, filePath: string): void {
     const sessionId = path.basename(filePath, '.jsonl');
 
-    // Detect file deletion — remove session if the file is gone
     let stat: fs.Stats;
     try {
       stat = fs.statSync(filePath);
@@ -693,7 +321,6 @@ req.write(body);req.end();
         return;
       }
     } catch {
-      // File doesn't exist anymore — it was deleted
       this.removeSession(sessionId);
       return;
     }
@@ -718,7 +345,6 @@ req.write(body);req.end();
 
       const size = stat.size;
 
-      // Handle truncation / replacement
       if (size < entry.fileOffset) {
         entry.fileOffset = 0;
       }
@@ -740,333 +366,43 @@ req.write(body);req.end();
       entry.fileOffset = readStart + bytesRead;
 
       const raw = buf.slice(0, bytesRead).toString('utf8');
-      const changed = this.parseLines(raw, entry);
+      const changed = parseLines(raw, entry, this.makeRekeyCallback(entry));
 
       if (changed) {
-        this.resetTimers(entry);
+        resetTimers(entry, () => this.onEntryTimerChange(entry));
         this.scheduleUpdate();
       }
 
     } catch { /* ignore */ }
   }
 
-  // -------------------------------------------------------------------------
-  // JSONL parsing
-  // -------------------------------------------------------------------------
-
-  private parseLines(raw: string, entry: SessionEntry): boolean {
-    if (!raw) { return false; }
-
-    const lines = raw.split('\n');
-    let changed = false;
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) { continue; }
-
-      let obj: Record<string, unknown>;
-      try {
-        obj = JSON.parse(trimmed) as Record<string, unknown>;
-      } catch {
-        continue; // skip malformed
-      }
-
-      if (this.applyEntry(obj, entry)) {
-        changed = true;
-      }
-    }
-
-    return changed;
-  }
-
-  private applyEntry(
-    obj:   Record<string, unknown>,
-    entry: SessionEntry
-  ): boolean {
-    let changed = false;
-    const s = entry.state;
-
-    // Update sessionId / lastSeen from any entry that carries them
-    if (typeof obj['sessionId'] === 'string' && obj['sessionId']) {
-      const newId = obj['sessionId'] as string;
-      if (newId !== s.sessionId) {
-        // Re-key in maps
-        this.entries.delete(s.sessionId);
-        this.sessions.delete(s.sessionId);
-        s.sessionId = newId;
-        this.entries.set(newId, entry);
-        this.sessions.set(newId, s);
-        changed = true;
-      }
-    }
-
-    if (typeof obj['timestamp'] === 'string' || typeof obj['timestamp'] === 'number') {
-      const ts = typeof obj['timestamp'] === 'string'
-        ? new Date(obj['timestamp'] as string).getTime()
-        : obj['timestamp'] as number;
-      if (!isNaN(ts) && ts > 0) { s.lastSeen = ts; }
-      changed = true;
-    }
-
-    // Extract entrypoint from any entry that carries it
-    const entrypoint = obj['entrypoint'] as string | undefined;
-    if (entrypoint && !s.entrypoint) {
-      s.entrypoint = entrypoint;
-      changed = true;
-    }
-
-    // Extract effort from top-level fields
-    const effort = (obj['reasoningEffort'] ?? obj['reasoning_effort']) as string | undefined;
-    if (effort) {
-      s.effort = effort;
-      changed = true;
-    }
-
-    const type = obj['type'] as string | undefined;
-
-    // -----------------------------------------------------------------------
-    // ai-title (chat name)
-    // -----------------------------------------------------------------------
-    if (type === 'ai-title') {
-      const title = obj['aiTitle'] as string | undefined;
-      if (title) {
-        s.chatTitle = title;
-        changed = true;
-      }
-      return changed;
-    }
-
-    // -----------------------------------------------------------------------
-    // custom-title (user renamed the chat)
-    // -----------------------------------------------------------------------
-    if (type === 'custom-title') {
-      const title = obj['customTitle'] as string | undefined;
-      if (title) {
-        s.chatTitle = title;
-        changed = true;
-      }
-      return changed;
-    }
-
-    // -----------------------------------------------------------------------
-    // file-history-snapshot
-    // -----------------------------------------------------------------------
-    if (type === 'file-history-snapshot') {
-      const snapshot = obj['snapshot'] as Record<string, unknown> | undefined;
-      const backups  = snapshot?.['trackedFileBackups'] as Record<string, unknown> | undefined;
-      if (backups) {
-        const keys = Object.keys(backups);
-        if (keys.length > 0) {
-          s.currentFile = path.basename(keys[0]);
-          changed = true;
-        }
-      }
-      return changed;
-    }
-
-    // -----------------------------------------------------------------------
-    // user message
-    // -----------------------------------------------------------------------
-    if (type === 'user') {
-      // Extract permission mode
-      const perm = obj['permissionMode'] as string | undefined;
-      if (perm) {
-        s.permissionMode = perm;
-        changed = true;
-      }
-
-      const msg = obj['message'] as Record<string, unknown> | undefined;
-      const content = msg?.['content'] ?? obj['content'];
-      const hasToolResult = Array.isArray(content) &&
-        content.some(
-          (c: unknown) =>
-            typeof c === 'object' &&
-            c !== null &&
-            (c as Record<string, unknown>)['type'] === 'tool_result'
-        );
-
-      s.needsInput = false;
-      if (!hasToolResult) {
-        s.activity = 'user_sent';
-        s.lastSeen = Date.now();
-        s.turnCount++;
-      }
-      changed = true;
-      return changed;
-    }
-
-    // -----------------------------------------------------------------------
-    // assistant message
-    // -----------------------------------------------------------------------
-    if (type === 'assistant') {
-      const message    = obj['message']    as Record<string, unknown> | undefined;
-      const stopReason = (message?.['stop_reason'] ?? obj['stop_reason']) as string | undefined;
-
-      // Count tool_use blocks and extract last action
-      const contentBlocks = message?.['content'] as unknown[] | undefined;
-      if (Array.isArray(contentBlocks)) {
-        for (const block of contentBlocks) {
-          if (
-            typeof block === 'object' &&
-            block !== null &&
-            (block as Record<string, unknown>)['type'] === 'tool_use'
-          ) {
-            s.toolUseCount++;
-            const toolBlock = block as Record<string, unknown>;
-            const toolName = toolBlock['name'] as string || '';
-            const toolInput = (toolBlock['input'] as Record<string, unknown>) || {};
-            s.lastAction = humanizeToolUse(toolName, toolInput);
-            if (toolName === 'AskUserQuestion') {
-              s.needsInput = true;
-            }
-            changed = true;
-          }
-        }
-      }
-
-      if (stopReason === 'tool_use') {
-        s.activity = 'tooling';
-        s.lastSeen = Date.now();
-        changed = true;
-      } else if (stopReason === 'end_turn') {
-        s.activity = 'responding';
-        s.lastSeen = Date.now();
-        changed = true;
-
-        // Detect if Claude is asking a question or presenting choices
-        const textBlocks = Array.isArray(contentBlocks)
-          ? contentBlocks.filter(
-              (b): b is Record<string, unknown> =>
-                typeof b === 'object' && b !== null &&
-                (b as Record<string, unknown>)['type'] === 'text'
-            )
-          : [];
-        if (textBlocks.length > 0) {
-          const lastText = String(
-            (textBlocks[textBlocks.length - 1] as Record<string, unknown>)['text'] ?? ''
-          ).trimEnd();
-          const isQuestion =
-            lastText.endsWith('?') ||
-            /\b(which|would you( like)?|do you want|please (choose|select|let me know)|what would|how would you|shall i|should i)\b/i.test(lastText) ||
-            /^\s*\d+[.)]\s+\S/m.test(lastText); // numbered list options
-          s.needsInput = isQuestion;
-        } else {
-          s.needsInput = false;
-        }
-
-        // Extract model
-        const model = (message?.['model'] ?? obj['model']) as string | undefined;
-        if (model) { s.model = model; }
-
-        const usage = (message?.['usage'] ?? obj['usage']) as Record<string, unknown> | undefined;
-        if (usage) {
-          const cacheCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
-          const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
-
-          if (typeof usage['input_tokens'] === 'number') {
-            const turnInput = usage['input_tokens'] + cacheCreate + cacheRead;
-            s.inputTokens += turnInput;
-            s.lastInputTokens = turnInput;
-          }
-          if (typeof usage['output_tokens'] === 'number') {
-            s.outputTokens += usage['output_tokens'];
-            s.lastOutputTokens = usage['output_tokens'];
-          }
-          const speed = usage['speed'] as string | undefined;
-          if (speed) { s.speed = speed; }
-
-          const effort = usage['reasoning_effort'] as string | undefined;
-          if (effort) { s.effort = effort; }
-
-          const latestInput = (usage['input_tokens'] as number | undefined) ?? 0;
-          const totalContext = latestInput + cacheCreate + cacheRead;
-          const limit = getContextLimit(s.model);
-          s.contextPct = Math.min(100, Math.round((totalContext / limit) * 100));
-        }
-
-        // version
-        const version = obj['version'] as string | undefined;
-        if (version) { s.version = version; }
-
-        // gitBranch
-        const branch = obj['gitBranch'] as string | undefined;
-        if (branch) { s.gitBranch = branch; }
-
-        // cwd
-        const cwd = obj['cwd'] as string | undefined;
-        if (cwd) { s.cwd = cwd; }
-      }
-
-      return changed;
-    }
-
-    return changed;
-  }
-
-  // -------------------------------------------------------------------------
-  // Session removal (file deleted)
-  // -------------------------------------------------------------------------
-
   private removeSession(sessionId: string): void {
     const entry = this.entries.get(sessionId);
     if (!entry) { return; }
-    this.clearEntryTimers(entry);
+    clearEntryTimers(entry);
     this.entries.delete(sessionId);
     this.sessions.delete(sessionId);
     this.scheduleUpdate();
   }
 
-  // -------------------------------------------------------------------------
-  // Idle + sleep timers
-  // -------------------------------------------------------------------------
-
-  private clearEntryTimers(entry: SessionEntry): void {
-    if (entry.idleTimer !== null) {
-      clearTimeout(entry.idleTimer);
-      entry.idleTimer = null;
-    }
-    if (entry.sleepTimer !== null) {
-      clearTimeout(entry.sleepTimer);
-      entry.sleepTimer = null;
-    }
+  private onEntryTimerChange(entry: SessionEntry): void {
+    this.sessions.set(entry.state.sessionId, entry.state);
+    this.scheduleUpdate();
   }
 
-  private resetTimers(entry: SessionEntry): void {
-    this.clearEntryTimers(entry);
-
-    // After 10s of no new data → thinking (if actively working) or idle
-    entry.idleTimer = setTimeout(() => {
-      entry.idleTimer = null;
-      if (entry.state.activity === 'sleeping') { return; }
-      // user_sent and tooling both mean Claude is mid-work — stay in thinking
-      if (entry.state.activity === 'user_sent' || entry.state.activity === 'tooling') {
-        entry.state.activity = 'thinking';
-      } else if (entry.state.activity !== 'thinking') {
-        // responding → idle (turn is done), anything else → idle
-        entry.state.activity = 'idle';
-      }
-      this.sessions.set(entry.state.sessionId, entry.state);
-      this.scheduleUpdate();
-    }, IDLE_TIMEOUT_MS);
-
-    // After 5min of no new data → sleeping
-    entry.sleepTimer = setTimeout(() => {
-      entry.sleepTimer = null;
-      entry.state.activity = 'sleeping';
-      this.sessions.set(entry.state.sessionId, entry.state);
-      this.scheduleUpdate();
-    }, SLEEP_TIMEOUT_MS);
+  private makeRekeyCallback(entry: SessionEntry): (oldId: string, newId: string) => void {
+    return (oldId, newId) => {
+      this.entries.delete(oldId);
+      this.sessions.delete(oldId);
+      this.entries.set(newId, entry);
+      this.sessions.set(newId, entry.state);
+    };
   }
-
-  // -------------------------------------------------------------------------
-  // Inactive pruning
-  // -------------------------------------------------------------------------
 
   private pruneInactive(): void {
     const cutoff = Date.now() - ACTIVE_WINDOW_MS;
     let changed = false;
     for (const [id, entry] of this.entries.entries()) {
-      // Remove if the backing file no longer exists (chat was deleted)
       try {
         if (!fs.existsSync(entry.filePath)) {
           this.removeSession(id);
@@ -1076,7 +412,7 @@ req.write(body);req.end();
       } catch { /* ignore */ }
 
       if (entry.state.lastSeen < cutoff) {
-        this.clearEntryTimers(entry);
+        clearEntryTimers(entry);
         this.entries.delete(id);
         this.sessions.delete(id);
         changed = true;
@@ -1085,16 +421,12 @@ req.write(body);req.end();
     if (changed) { this.scheduleUpdate(); }
   }
 
-  // -------------------------------------------------------------------------
-  // Fast sync: detect deleted JSONL files
-  // -------------------------------------------------------------------------
-
   private syncDeletedFiles(): void {
     let changed = false;
     for (const [id, entry] of this.entries.entries()) {
       try {
         if (!fs.existsSync(entry.filePath)) {
-          this.clearEntryTimers(entry);
+          clearEntryTimers(entry);
           this.entries.delete(id);
           this.sessions.delete(id);
           changed = true;
@@ -1106,10 +438,6 @@ req.write(body);req.end();
     }
   }
 
-  // -------------------------------------------------------------------------
-  // Debounced update emission
-  // -------------------------------------------------------------------------
-
   private scheduleUpdate(): void {
     if (this.debounceId !== null) { return; }
     this.debounceId = setTimeout(() => {
@@ -1119,10 +447,6 @@ req.write(body);req.end();
       } catch { /* caller errors must not crash us */ }
     }, DEBOUNCE_MS);
   }
-
-  // -------------------------------------------------------------------------
-  // Hue assignment
-  // -------------------------------------------------------------------------
 
   private nextHue(): number {
     return HUE_STEPS[this.hueIndex++ % HUE_STEPS.length];

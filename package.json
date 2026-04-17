@@ -70,9 +70,12 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "deploy": "tsc -p ./ && for d in ~/.vscode/extensions/local.claude-code-session-*/; do cp out/panel.js out/extension.js out/sessionManager.js \"$d/out/\" && cp package.json \"$d/package.json\"; done",
+    "compile": "tsc -p ./ && npm run build:webview && npm run copy:webview-static",
+    "build:webview": "esbuild src/webview/index.ts --bundle --outfile=out/webview/bundle.js --format=iife --target=es2020",
+    "copy:webview-static": "mkdir -p out/webview && cp src/webview/styles.css src/webview/body.html out/webview/",
+    "deploy": "npm run compile && for d in ~/.vscode/extensions/local.claude-code-session-*/; do mkdir -p \"$d/out/session\" \"$d/out/webview\" && cp out/*.js \"$d/out/\" && cp out/session/*.js \"$d/out/session/\" && cp out/webview/bundle.js out/webview/styles.css out/webview/body.html \"$d/out/webview/\" && cp package.json \"$d/package.json\"; done",
     "watch": "tsc -watch -p ./",
+    "watch:webview": "esbuild src/webview/index.ts --bundle --outfile=out/webview/bundle.js --format=iife --target=es2020 --watch",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run"
   },
@@ -80,6 +83,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "canvas": "^3.2.3",
+    "esbuild": "^0.28.0",
     "ts-node": "^10.9.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
