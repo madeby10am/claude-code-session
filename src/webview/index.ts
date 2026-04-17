@@ -485,7 +485,7 @@ function updateTimeMarkers(usage) {
 // no estimation. The canvas size stays 100px tall; the window toggle filters
 // events client-side to the selected lookback.
 let _lastTokenEvents = [];
-const TOKEN_WINDOW_DEFAULT = 24;
+const TOKEN_WINDOW_DEFAULT = 5;
 let _tokenWindowHours = TOKEN_WINDOW_DEFAULT;
 
 function fmtTokensShort(n) {
@@ -533,14 +533,10 @@ function renderTokenActivity(events) {
   const tMin = now - _tokenWindowHours * 60 * 60 * 1000;
   const visible = _lastTokenEvents.filter(e => e.ts >= tMin);
 
-  if (visible.length === 0) {
-    canvas.style.display = 'none';
-    if (empty) empty.style.display = '';
-    if (totalEl) totalEl.textContent = '\u2014';
-    return;
-  }
+  // Always draw the canvas so the baseline stays visible even during idle
+  // stretches. The "no messages" message only shows as extra context below.
   canvas.style.display = 'block';
-  if (empty) empty.style.display = 'none';
+  if (empty) empty.style.display = visible.length === 0 ? '' : 'none';
 
   const dpr  = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 400;
@@ -567,6 +563,15 @@ function renderTokenActivity(events) {
   }
   const niceMax = niceCeil(maxTokens) || 1;
   const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
+
+  // Anchor the line at y=0 on both edges so it starts from the left baseline,
+  // rises into data points, and drops back down to the right edge. When there
+  // are no events, this leaves a single baseline segment (0 across the window).
+  const path = [
+    { ts: tMin, tokens: 0 },
+    ...visible,
+    { ts: now, tokens: 0 },
+  ];
 
   // The body gets the .dark class only in dark mode; the default (no class)
   // is light mode, so `contains('dark')` is the only correct check.
@@ -613,60 +618,53 @@ function renderTokenActivity(events) {
     ctx.fillText(t.label, lx, padT + h + 11);
   }
 
-  // Build a smoothed path through every data point via quadratic curves between
-  // midpoints. Straight jagged lines felt noisy; this flows but still shows spikes.
+  // Smoothed path via quadratic curves through midpoints. The anchored path
+  // starts/ends at y=0 so idle stretches drag along the baseline.
   function tracePath() {
     ctx.beginPath();
-    if (visible.length === 1) {
-      const p = visible[0];
-      ctx.moveTo(xAt(p.ts), yAt(p.tokens));
-      return;
-    }
-    ctx.moveTo(xAt(visible[0].ts), yAt(visible[0].tokens));
-    for (let i = 0; i < visible.length - 1; i++) {
-      const a = visible[i], b = visible[i + 1];
+    ctx.moveTo(xAt(path[0].ts), yAt(path[0].tokens));
+    for (let i = 0; i < path.length - 1; i++) {
+      const a = path[i], b = path[i + 1];
       const ax = xAt(a.ts), ay = yAt(a.tokens);
       const bx = xAt(b.ts), by = yAt(b.tokens);
       const midX = (ax + bx) / 2;
       const midY = (ay + by) / 2;
       ctx.quadraticCurveTo(ax, ay, midX, midY);
     }
-    const last = visible[visible.length - 1];
+    const last = path[path.length - 1];
     ctx.lineTo(xAt(last.ts), yAt(last.tokens));
   }
 
-  // Vertical gradient fill — green at the bottom (low tokens) sliding up to red
-  // at the top (max tokens). Peaks of the curve reach warm colors naturally.
+  // Vertical gradient fill — green at the baseline (low) → red at the top
+  // (high). With anchored baseline points, the shape closes naturally along y=0.
   const grad = ctx.createLinearGradient(0, padT, 0, padT + h);
-  grad.addColorStop(0.00, 'rgba(239,68,68,0.55)');    // red at niceMax
-  grad.addColorStop(0.25, 'rgba(245,158,11,0.42)');   // orange
-  grad.addColorStop(0.50, 'rgba(234,179,8,0.34)');    // yellow
-  grad.addColorStop(0.75, 'rgba(101,163,13,0.28)');   // yellow-green
-  grad.addColorStop(1.00, 'rgba(4,120,87,0.20)');     // green at baseline
+  grad.addColorStop(0.00, 'rgba(239,68,68,0.55)');
+  grad.addColorStop(0.25, 'rgba(245,158,11,0.42)');
+  grad.addColorStop(0.50, 'rgba(234,179,8,0.34)');
+  grad.addColorStop(0.75, 'rgba(101,163,13,0.28)');
+  grad.addColorStop(1.00, 'rgba(4,120,87,0.20)');
 
-  if (visible.length >= 2) {
+  if (visible.length >= 1) {
     ctx.save();
     tracePath();
-    ctx.lineTo(xAt(visible[visible.length - 1].ts), padT + h);
-    ctx.lineTo(xAt(visible[0].ts), padT + h);
     ctx.closePath();
     ctx.fillStyle = grad;
     ctx.fill();
     ctx.restore();
   }
 
-  // Line on top — single amber stroke so the curve reads as one object.
+  // Line on top — "black" that adapts via --text-bright (near-black in light
+  // mode, near-white in dark). Always drawn, even for an all-zero baseline.
+  const lineColor = (getComputedStyle(document.body).getPropertyValue('--text-bright') || '#111').trim();
   ctx.lineWidth = 1.8;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = '#f59e0b';
-  if (visible.length >= 2) {
-    tracePath();
-    ctx.stroke();
-  }
+  ctx.strokeStyle = lineColor;
+  tracePath();
+  ctx.stroke();
 
   // Dots — only when the view is sparse enough to read individual points.
-  if (visible.length <= 30) {
+  if (visible.length > 0 && visible.length <= 30) {
     function tierColor(tok) {
       const frac = tok / niceMax;
       if (frac <= 0.20) return '#047857';

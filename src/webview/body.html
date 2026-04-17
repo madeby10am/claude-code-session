@@ -80,16 +80,16 @@
     <div class="section-body framed gray">
       <div class="token-activity-summary">
         <span id="token-activity-total">&mdash;</span>
-        <span id="token-activity-range" class="legend-range">last 24h</span>
+        <span id="token-activity-range" class="legend-range">last 5h</span>
       </div>
       <canvas id="token-activity-canvas" width="400" height="100" style="width:100%;height:100px;display:block;"></canvas>
       <div id="token-activity-empty" class="cap-item" style="color:var(--text-muted);padding-top:2px;">No messages in the selected window.</div>
       <div class="token-activity-footer">
         <div id="token-window-filter">
           <button class="token-window-btn" data-window="1"  data-active="false">1h</button>
-          <button class="token-window-btn" data-window="5"  data-active="false">5h</button>
+          <button class="token-window-btn" data-window="5"  data-active="true">5h</button>
           <button class="token-window-btn" data-window="12" data-active="false">12h</button>
-          <button class="token-window-btn" data-window="24" data-active="true">24h</button>
+          <button class="token-window-btn" data-window="24" data-active="false">24h</button>
         </div>
         <button class="card-refresh-btn" title="Refresh" onclick="event.stopPropagation();refreshTokenActivity();">&#x21bb;</button>
       </div>
