@@ -429,12 +429,12 @@ body:not(.dark) .time-marker { background: #111827; }
 
 /* ===== Capabilities ===== */
 .link {
-  color: var(--accent);
+  color: var(--text-bright);
   cursor: pointer;
   text-decoration: none;
-  transition: opacity 0.15s;
+  transition: color 0.15s;
 }
-.link:hover { opacity: 0.8; text-decoration: underline; }
+.link:hover { color: #2563eb; text-decoration: underline; }
 
 .cap-item {
   display: flex;
@@ -442,6 +442,8 @@ body:not(.dark) .time-marker { background: #111827; }
   gap: 6px;
   padding: 3px 0;
   font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
   color: var(--text);
 }
 .cap-dot {
@@ -659,6 +661,20 @@ body:not(.dark) .time-marker { background: #111827; }
   border-color: var(--text-bright);
 }
 
+/* Same treatment inside Skills — source and category chips drop the cyan
+   accent in favor of black (light) / white (dark). */
+#skills-section .skills-filter-btn:hover,
+#skills-section .skills-category-btn:hover {
+  border-color: var(--text-bright);
+  color: var(--text-bright);
+}
+#skills-section .skills-filter-btn[data-active="true"],
+#skills-section .skills-category-btn[data-active="true"] {
+  background: var(--text-bright);
+  color: var(--bg);
+  border-color: var(--text-bright);
+}
+
 /* Square chips that match the refresh button's shape/size. */
 #token-activity-section .token-window-btn {
   border-radius: 4px;
@@ -694,6 +710,7 @@ body:not(.dark) .time-marker { background: #111827; }
 .skill-item:last-child { border-bottom: none; }
 .skill-name {
   font-size: 11px;
+  font-family: var(--mono);
   font-weight: 600;
   color: var(--text-bright);
 }
