@@ -560,7 +560,7 @@ function renderTokenActivity(events) {
 
   const dpr  = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 400;
-  const cssH = 100;
+  const cssH = 75;
   if (canvas.width  !== cssW * dpr) canvas.width  = cssW * dpr;
   if (canvas.height !== cssH * dpr) canvas.height = cssH * dpr;
   const ctx = canvas.getContext('2d');
