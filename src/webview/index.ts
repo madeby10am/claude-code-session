@@ -33,11 +33,16 @@ function fmtTokens(n) {
 }
 
 function ctxLevel(pct) {
-  if (pct >= 70) return 'red';
-  if (pct >= 50) return 'orange';
-  if (pct >= 30) return 'yellow';
-  if (pct >= 20) return 'yellow-green';
+  if (pct >= 90) return 'red';
+  if (pct >= 75) return 'orange';
+  if (pct >= 50) return 'yellow';
+  if (pct >= 25) return 'yellow-green';
   return 'green';
+}
+
+const LEVEL_RANK = { 'green': 1, 'yellow-green': 2, 'yellow': 3, 'orange': 4, 'red': 5 };
+function worseLevel(a, b) {
+  return (LEVEL_RANK[a] || 0) >= (LEVEL_RANK[b] || 0) ? a : b;
 }
 
 function fmtTime(ts) {
@@ -423,8 +428,13 @@ function updateUsageMeters(usage) {
 
   const sessBar = document.getElementById('usage-today-bar');
   const weekBar = document.getElementById('usage-week-bar');
-  if (sessBar) { sessBar.style.width = Math.min(100, sessPct) + '%'; sessBar.dataset.level = ctxLevel(sessPct); }
-  if (weekBar) { weekBar.style.width = Math.min(100, weekPct) + '%'; weekBar.dataset.level = ctxLevel(weekPct); }
+  const sessLevel = ctxLevel(sessPct);
+  const weekLevel = ctxLevel(weekPct);
+  if (sessBar) { sessBar.style.width = Math.min(100, sessPct) + '%'; sessBar.dataset.level = sessLevel; }
+  if (weekBar) { weekBar.style.width = Math.min(100, weekPct) + '%'; weekBar.dataset.level = weekLevel; }
+
+  const usageCard = document.querySelector('.usage-card');
+  if (usageCard) usageCard.dataset.level = worseLevel(sessLevel, weekLevel);
 
   updateTimeMarkers(usage);
 }
