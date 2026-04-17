@@ -397,6 +397,17 @@ function fmtResetIn(ms) {
 // Store usage data for time marker animation
 let _lastUsage = null;
 
+// Delta-based pace level: how far ahead or behind the timing marker the usage bar is.
+// Negative delta = under-pacing (green territory); positive = outpacing (warming up).
+function paceLevel(usagePct, timePct) {
+  const delta = usagePct - timePct;
+  if (delta <= -20) return 'green';         // deeply behind the line → dark green
+  if (delta <= -5)  return 'yellow-green';  // slightly behind → lighter green
+  if (delta <= 5)   return 'yellow';        // about on pace / just crossed
+  if (delta <= 20)  return 'orange';        // moderately ahead
+  return 'red';                              // way ahead / burning fast
+}
+
 function updateUsageMeters(usage) {
   if (!usage) return;
   _lastUsage = usage;
@@ -432,8 +443,14 @@ function updateUsageMeters(usage) {
 
   const sessBar = document.getElementById('usage-today-bar');
   const weekBar = document.getElementById('usage-week-bar');
-  const sessLevel = ctxLevel(sessPct);
-  const weekLevel = ctxLevel(weekPct);
+
+  // Pace-based coloring: delta between usage% and time-elapsed% drives the color.
+  // Behind the timing line → green; ahead → yellow/orange/red.
+  const sessTimePct = usage.live ? Math.max(0, Math.min(100, ((usage.sessionWindowMs - usage.sessionResetMs) / usage.sessionWindowMs) * 100)) : sessPct;
+  const weekTimePct = usage.live ? Math.max(0, Math.min(100, ((usage.weeklyWindowMs  - usage.weeklyResetMs)  / usage.weeklyWindowMs)  * 100)) : weekPct;
+  const sessLevel = paceLevel(sessPct, sessTimePct);
+  const weekLevel = paceLevel(weekPct, weekTimePct);
+
   if (sessBar) { sessBar.style.width = Math.min(100, sessPct) + '%'; sessBar.dataset.level = sessLevel; }
   if (weekBar) { weekBar.style.width = Math.min(100, weekPct) + '%'; weekBar.dataset.level = weekLevel; }
 
@@ -473,10 +490,10 @@ function renderUsageTrends(points) {
   const rangeEl = document.getElementById('usage-trends-range');
   if (!canvas) return;
 
-  if (!points || points.length < 2) {
+  if (!points || points.length === 0) {
     canvas.style.display = 'none';
     if (empty) empty.style.display = '';
-    if (rangeEl) rangeEl.textContent = points && points.length === 1 ? '1 point' : '';
+    if (rangeEl) rangeEl.textContent = '';
     return;
   }
   canvas.style.display = 'block';
@@ -517,7 +534,15 @@ function renderUsageTrends(points) {
     ctx.fillText(pct + '%', padL + 2, y - 2);
   }
 
-  function drawLine(getY, stroke) {
+  function drawSeries(getY, stroke) {
+    if (points.length === 1) {
+      const p = points[0];
+      ctx.fillStyle = stroke;
+      ctx.beginPath();
+      ctx.arc(xAt(p.ts), getY(p), 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      return;
+    }
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = stroke;
     ctx.beginPath();
@@ -530,8 +555,8 @@ function renderUsageTrends(points) {
     ctx.stroke();
   }
 
-  drawLine(p => yAt(p.sessionPct), '#f59e0b');
-  drawLine(p => yAt(p.weeklyPct),  '#22d3ee');
+  drawSeries(p => yAt(p.sessionPct), '#f59e0b');
+  drawSeries(p => yAt(p.weeklyPct),  '#22d3ee');
 
   if (rangeEl) {
     const spanMin = Math.round(tSpan / 60000);
@@ -972,8 +997,13 @@ restoreLayoutState();
 // ─── Boot ───────────────────────────────────────────────────────────────────
 vscodeApi.postMessage({ type: 'ready' });
 
+function resetUsageHistory() {
+  vscodeApi.postMessage({ type: 'resetUsageHistory' });
+}
+
 // Expose the things that inline HTML onclick handlers reference.
-(window as any).vscodeApi     = vscodeApi;
-(window as any).toggleSection = toggleSection;
-(window as any).togglePin     = togglePin;
-(window as any).refreshUsage  = refreshUsage;
+(window as any).vscodeApi          = vscodeApi;
+(window as any).toggleSection      = toggleSection;
+(window as any).togglePin          = togglePin;
+(window as any).refreshUsage       = refreshUsage;
+(window as any).resetUsageHistory  = resetUsageHistory;

@@ -57,6 +57,7 @@ export type ExtensionToWebview =
 export type WebviewToExtension =
   | { type: 'ready' }
   | { type: 'refreshUsage' }
+  | { type: 'resetUsageHistory' }
   | { type: 'setDarkMode'; value: boolean }
   | { type: 'openUrl';     url: string }
   | { type: 'openFile';    file: string }

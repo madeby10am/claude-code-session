@@ -73,6 +73,15 @@ export function activate(context: vscode.ExtensionContext) {
   // Fresh data on sidebar open
   panel.onReady(() => { usageTick(); envTick(); });
 
+  // Clear persisted usage history when the user taps the reset button
+  panel.onResetUsageHistory(() => {
+    history = [];
+    context.globalState.update(HISTORY_KEY, history);
+    panel!.sendUsageHistory(history);
+    // Also sample once so the chart isn't stuck in an empty state
+    usageTick();
+  });
+
   context.subscriptions.push({
     dispose: () => {
       clearInterval(usageTimer);

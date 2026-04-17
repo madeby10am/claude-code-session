@@ -85,6 +85,9 @@
       </div>
       <canvas id="usage-trends-canvas" width="400" height="100" style="width:100%;height:100px;display:block;"></canvas>
       <div id="usage-trends-empty" class="cap-item" style="color:var(--text-muted);padding-top:6px;">Collecting usage data&hellip; points appear every 60s while VS Code is open.</div>
+      <div class="usage-trends-footer">
+        <button class="card-refresh-btn" title="Reset history" onclick="event.stopPropagation();resetUsageHistory();">&#x21ba;</button>
+      </div>
     </div>
   </div>
 

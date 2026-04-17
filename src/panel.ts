@@ -115,6 +115,9 @@ export class Panel implements vscode.WebviewViewProvider {
       this.sendProjectInfo();
       if (this.onReadyCallback) { this.onReadyCallback(); }
     }
+    if (msg.type === 'resetUsageHistory') {
+      if (this.onResetUsageHistoryCallback) { this.onResetUsageHistoryCallback(); }
+    }
     if (msg.type === 'setDarkMode') {
       this.context.workspaceState.update('darkMode', msg.value);
     }
@@ -262,6 +265,9 @@ export class Panel implements vscode.WebviewViewProvider {
     this.lastHistory = points;
     this.postMessage({ type: 'usageHistory', points });
   }
+
+  private onResetUsageHistoryCallback: (() => void) | null = null;
+  onResetUsageHistory(cb: () => void): void { this.onResetUsageHistoryCallback = cb; }
 
   sendEnvData(data: EnvData): void {
     this.lastEnvData = data;

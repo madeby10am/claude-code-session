@@ -716,6 +716,24 @@ body:not(.dark) .time-marker { background: #111827; }
 .usage-card[data-level="orange"]::before       { background: linear-gradient(135deg, #eab308, #f59e0b); }
 .usage-card[data-level="red"]::before          { background: linear-gradient(135deg, #f59e0b, #ef4444); }
 
+/* Pace-based bar color: solid colors with smooth transitions as user drifts from the timing line */
+#usage-today-bar, #usage-week-bar {
+  background-image: none !important;
+  transition: width 0.6s ease, background-color 1.2s ease;
+}
+#usage-today-bar[data-level="green"],        #usage-week-bar[data-level="green"]        { background-color: #047857; }
+#usage-today-bar[data-level="yellow-green"], #usage-week-bar[data-level="yellow-green"] { background-color: #65a30d; }
+#usage-today-bar[data-level="yellow"],       #usage-week-bar[data-level="yellow"]       { background-color: #eab308; }
+#usage-today-bar[data-level="orange"],       #usage-week-bar[data-level="orange"]       { background-color: #f59e0b; }
+#usage-today-bar[data-level="red"],          #usage-week-bar[data-level="red"]          { background-color: #ef4444; }
+
+/* Footer for Usage Trends reset button */
+.usage-trends-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
 /* Usage card glow pulse — soft accent ring matching active-session rhythm */
 .usage-card { animation: glowUsage 2.4s ease-in-out infinite; }
 @keyframes glowUsage {
