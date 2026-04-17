@@ -124,11 +124,12 @@ body::before {
   color: var(--text-bright);
 }
 .section-chevron {
-  font-size: 13px;
-  font-weight: 900;
+  width: 14px;
+  height: 14px;
   color: var(--text-bright);
   transition: transform 0.2s, color 0.15s;
   margin-left: auto;
+  flex-shrink: 0;
 }
 .section-header:hover .section-chevron { color: var(--accent); }
 .section-pin {
