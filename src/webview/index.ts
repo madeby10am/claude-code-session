@@ -555,23 +555,25 @@ function renderTokenActivity(events) {
   const tSpan = Math.max(1, now - tMin);
   const xAt = (ts) => padL + ((ts - tMin) / tSpan) * w;
 
-  let maxTokens = 0;
+  // Bucketize: count how many bars we want for this window, then sum tokens
+  // per bucket. Each bar = total tokens spent during that time slice.
+  const WINDOW_BUCKETS = { 1: 12, 5: 30, 12: 24, 24: 24 };
+  const numBuckets = WINDOW_BUCKETS[_tokenWindowHours] || 24;
+  const windowMs  = _tokenWindowHours * 60 * 60 * 1000;
+  const bucketMs  = windowMs / numBuckets;
+
+  const buckets = new Array(numBuckets).fill(0);
   let totalTokens = 0;
   for (const e of visible) {
-    if (e.tokens > maxTokens) maxTokens = e.tokens;
+    const idx = Math.min(numBuckets - 1, Math.max(0, Math.floor((e.ts - tMin) / bucketMs)));
+    buckets[idx] += e.tokens;
     totalTokens += e.tokens;
   }
-  const niceMax = niceCeil(maxTokens) || 1;
-  const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
-  // Anchor the line at y=0 on both edges so it starts from the left baseline,
-  // rises into data points, and drops back down to the right edge. When there
-  // are no events, this leaves a single baseline segment (0 across the window).
-  const path = [
-    { ts: tMin, tokens: 0 },
-    ...visible,
-    { ts: now, tokens: 0 },
-  ];
+  let maxBucket = 0;
+  for (const v of buckets) if (v > maxBucket) maxBucket = v;
+  const niceMax = niceCeil(maxBucket) || 1;
+  const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
   // The body gets the .dark class only in dark mode; the default (no class)
   // is light mode, so `contains('dark')` is the only correct check.
@@ -618,24 +620,7 @@ function renderTokenActivity(events) {
     ctx.fillText(t.label, lx, padT + h + 11);
   }
 
-  // Smoothed path via quadratic curves through midpoints. The anchored path
-  // starts/ends at y=0 so idle stretches drag along the baseline.
-  function tracePath() {
-    ctx.beginPath();
-    ctx.moveTo(xAt(path[0].ts), yAt(path[0].tokens));
-    for (let i = 0; i < path.length - 1; i++) {
-      const a = path[i], b = path[i + 1];
-      const ax = xAt(a.ts), ay = yAt(a.tokens);
-      const bx = xAt(b.ts), by = yAt(b.tokens);
-      const midX = (ax + bx) / 2;
-      const midY = (ay + by) / 2;
-      ctx.quadraticCurveTo(ax, ay, midX, midY);
-    }
-    const last = path[path.length - 1];
-    ctx.lineTo(xAt(last.ts), yAt(last.tokens));
-  }
-
-  // Blue tier palette — light blue for small messages, dark blue for heavy ones.
+  // Blue tier palette — light blue for quiet buckets, dark blue for heavy ones.
   function tierColor(tok) {
     const frac = tok / niceMax;
     if (frac <= 0.20) return '#bfdbfe'; // blue-200
@@ -645,27 +630,17 @@ function renderTokenActivity(events) {
     return '#1e3a8a';                   // blue-900
   }
 
-  // Horizontal gradient along the line — colored by the token value at each
-  // x-position so the line itself shows light→dark blue as values climb.
-  const lineGrad = ctx.createLinearGradient(padL, 0, padL + w, 0);
-  for (let i = 0; i < path.length; i++) {
-    const frac = Math.max(0, Math.min(1, (xAt(path[i].ts) - padL) / Math.max(1, w)));
-    lineGrad.addColorStop(frac, tierColor(path[i].tokens));
-  }
-
-  ctx.lineWidth = 1.8;
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = lineGrad;
-  tracePath();
-  ctx.stroke();
-
-  // Dots at every real message, colored by the message's own tier.
-  for (const e of visible) {
-    ctx.fillStyle = tierColor(e.tokens);
-    ctx.beginPath();
-    ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
-    ctx.fill();
+  // Bars — one per bucket, height = total tokens that bucket.
+  const slotW = w / numBuckets;
+  const barGap = Math.max(1, slotW * 0.15);
+  const barW = Math.max(1, slotW - barGap);
+  for (let i = 0; i < numBuckets; i++) {
+    const v = buckets[i];
+    if (v <= 0) continue;
+    const barH = (v / niceMax) * h;
+    const x = padL + i * slotW + barGap / 2;
+    ctx.fillStyle = tierColor(v);
+    ctx.fillRect(x, padT + h - barH, barW, barH);
   }
 
   if (totalEl) {
