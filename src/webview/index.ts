@@ -568,9 +568,10 @@ function renderTokenActivity(events) {
   const niceMax = niceCeil(maxTokens) || 1;
   const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
-  const isDark = document.body.classList.contains('dark') || !document.body.classList.contains('light');
-  // Faint black lines in both modes — a bit more visible than before.
-  const gridColor  = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)';
+  // The body gets the .dark class only in dark mode; the default (no class)
+  // is light mode, so `contains('dark')` is the only correct check.
+  const isDark = document.body.classList.contains('dark');
+  const gridColor  = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.18)';
   const labelColor = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
 
   // Horizontal grid + Y-axis labels (tokens)
@@ -612,39 +613,74 @@ function renderTokenActivity(events) {
     ctx.fillText(t.label, lx, padT + h + 11);
   }
 
-  // Color each point by its token size relative to the Y-axis max — small
-  // messages read green, token-heavy spikes read red.
-  function tierColor(tok) {
-    const frac = tok / niceMax;
-    if (frac <= 0.20) return '#047857'; // green
-    if (frac <= 0.40) return '#65a30d'; // yellow-green
-    if (frac <= 0.60) return '#eab308'; // yellow
-    if (frac <= 0.80) return '#f59e0b'; // orange
-    return '#ef4444';                   // red
+  // Build a smoothed path through every data point via quadratic curves between
+  // midpoints. Straight jagged lines felt noisy; this flows but still shows spikes.
+  function tracePath() {
+    ctx.beginPath();
+    if (visible.length === 1) {
+      const p = visible[0];
+      ctx.moveTo(xAt(p.ts), yAt(p.tokens));
+      return;
+    }
+    ctx.moveTo(xAt(visible[0].ts), yAt(visible[0].tokens));
+    for (let i = 0; i < visible.length - 1; i++) {
+      const a = visible[i], b = visible[i + 1];
+      const ax = xAt(a.ts), ay = yAt(a.tokens);
+      const bx = xAt(b.ts), by = yAt(b.tokens);
+      const midX = (ax + bx) / 2;
+      const midY = (ay + by) / 2;
+      ctx.quadraticCurveTo(ax, ay, midX, midY);
+    }
+    const last = visible[visible.length - 1];
+    ctx.lineTo(xAt(last.ts), yAt(last.tokens));
   }
 
-  // Line — each segment colored by the warmer of its two endpoints so spikes
-  // pop visually and valleys recede.
-  ctx.lineWidth = 1.5;
+  // Vertical gradient fill — green at the bottom (low tokens) sliding up to red
+  // at the top (max tokens). Peaks of the curve reach warm colors naturally.
+  const grad = ctx.createLinearGradient(0, padT, 0, padT + h);
+  grad.addColorStop(0.00, 'rgba(239,68,68,0.55)');    // red at niceMax
+  grad.addColorStop(0.25, 'rgba(245,158,11,0.42)');   // orange
+  grad.addColorStop(0.50, 'rgba(234,179,8,0.34)');    // yellow
+  grad.addColorStop(0.75, 'rgba(101,163,13,0.28)');   // yellow-green
+  grad.addColorStop(1.00, 'rgba(4,120,87,0.20)');     // green at baseline
+
+  if (visible.length >= 2) {
+    ctx.save();
+    tracePath();
+    ctx.lineTo(xAt(visible[visible.length - 1].ts), padT + h);
+    ctx.lineTo(xAt(visible[0].ts), padT + h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Line on top — single amber stroke so the curve reads as one object.
+  ctx.lineWidth = 1.8;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
+  ctx.strokeStyle = '#f59e0b';
   if (visible.length >= 2) {
-    for (let i = 1; i < visible.length; i++) {
-      const a = visible[i - 1], b = visible[i];
-      const warmer = a.tokens >= b.tokens ? a : b;
-      ctx.strokeStyle = tierColor(warmer.tokens);
-      ctx.beginPath();
-      ctx.moveTo(xAt(a.ts), yAt(a.tokens));
-      ctx.lineTo(xAt(b.ts), yAt(b.tokens));
-      ctx.stroke();
-    }
+    tracePath();
+    ctx.stroke();
   }
-  // Dots — each one colored by its own tier
-  for (const e of visible) {
-    ctx.fillStyle = tierColor(e.tokens);
-    ctx.beginPath();
-    ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
-    ctx.fill();
+
+  // Dots — only when the view is sparse enough to read individual points.
+  if (visible.length <= 30) {
+    function tierColor(tok) {
+      const frac = tok / niceMax;
+      if (frac <= 0.20) return '#047857';
+      if (frac <= 0.40) return '#65a30d';
+      if (frac <= 0.60) return '#eab308';
+      if (frac <= 0.80) return '#f59e0b';
+      return '#ef4444';
+    }
+    for (const e of visible) {
+      ctx.fillStyle = tierColor(e.tokens);
+      ctx.beginPath();
+      ctx.arc(xAt(e.ts), yAt(e.tokens), 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   if (totalEl) {
