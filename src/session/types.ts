@@ -55,14 +55,14 @@ export interface SessionEntry {
   sleepTimer:  ReturnType<typeof setTimeout> | null;
 }
 
-const CONTEXT_LIMITS: Record<string, number> = {
-  'claude-opus-4-6':   1_000_000,
-  'claude-sonnet-4-6': 1_000_000,
-  'claude-haiku-4-5':  200_000,
-};
-
+// Pattern-match the model family so new minor versions (opus-4-7, sonnet-4-8, …) work
+// without a code change. Haiku is the small-context outlier.
 export function getContextLimit(model: string): number {
-  return CONTEXT_LIMITS[model] ?? 200_000;
+  if (!model) return 200_000;
+  const m = model.toLowerCase();
+  if (m.includes('haiku')) return 200_000;
+  if (m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  return 200_000;
 }
 
 export const HUE_STEPS = [0, 45, 120, 200, 270, 330, 160, 80];

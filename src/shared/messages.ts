@@ -41,9 +41,11 @@ export interface EnvData {
 }
 
 export interface UsagePoint {
-  ts:         number;
-  sessionPct: number;
-  weeklyPct:  number;
+  ts:              number;
+  sessionPct:      number;
+  weeklyPct:       number;
+  sessionResetMs?: number;  // ms remaining in the 5h window at sample time
+  weeklyResetMs?:  number;  // ms remaining in the 7d window at sample time
 }
 
 export type ExtensionToWebview =

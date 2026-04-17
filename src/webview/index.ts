@@ -481,6 +481,32 @@ function updateTimeMarkers(usage) {
 }
 
 // ─── Usage Trends line chart ────────────────────────────────────────────────
+// Same palette as the Usage bars' data-level CSS.
+const LEVEL_COLORS = {
+  'green':        '#047857',
+  'yellow-green': '#65a30d',
+  'yellow':       '#eab308',
+  'orange':       '#f59e0b',
+  'red':          '#ef4444',
+};
+
+const SESSION_WINDOW_MS = 5  * 60 * 60 * 1000;
+const WEEKLY_WINDOW_MS  = 7  * 24 * 60 * 60 * 1000;
+
+// For live points (with resetMs), pace-level; for historical (no resetMs), fall back
+// to raw percentage buckets so the line still changes color with volume.
+function colorFor(usagePct, resetMs, windowMs) {
+  if (typeof resetMs !== 'number') {
+    if (usagePct <= 20)  return LEVEL_COLORS['green'];
+    if (usagePct <= 40)  return LEVEL_COLORS['yellow-green'];
+    if (usagePct <= 60)  return LEVEL_COLORS['yellow'];
+    if (usagePct <= 80)  return LEVEL_COLORS['orange'];
+    return LEVEL_COLORS['red'];
+  }
+  const timePct = Math.max(0, Math.min(100, ((windowMs - resetMs) / windowMs) * 100));
+  return LEVEL_COLORS[paceLevel(usagePct, timePct)];
+}
+
 let _lastTrendPoints = [];
 
 function renderUsageTrends(points) {
@@ -534,29 +560,38 @@ function renderUsageTrends(points) {
     ctx.fillText(pct + '%', padL + 2, y - 2);
   }
 
-  function drawSeries(getY, stroke) {
+  // Draw each segment with its start-point's pace color (hard color shift across segments).
+  function drawSeries(getY, pickColor) {
+    ctx.lineWidth = 1.5;
     if (points.length === 1) {
       const p = points[0];
-      ctx.fillStyle = stroke;
+      ctx.fillStyle = pickColor(p);
       ctx.beginPath();
       ctx.arc(xAt(p.ts), getY(p), 2.5, 0, Math.PI * 2);
       ctx.fill();
       return;
     }
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = stroke;
-    ctx.beginPath();
-    for (let i = 0; i < points.length; i++) {
-      const x = xAt(points[i].ts);
-      const y = getY(points[i]);
-      if (i === 0) ctx.moveTo(x, y);
-      else         ctx.lineTo(x, y);
+    for (let i = 1; i < points.length; i++) {
+      const a = points[i - 1], b = points[i];
+      ctx.strokeStyle = pickColor(a);
+      ctx.beginPath();
+      ctx.moveTo(xAt(a.ts), getY(a));
+      ctx.lineTo(xAt(b.ts), getY(b));
+      ctx.stroke();
     }
-    ctx.stroke();
   }
 
-  drawSeries(p => yAt(p.sessionPct), '#f59e0b');
-  drawSeries(p => yAt(p.weeklyPct),  '#22d3ee');
+  drawSeries(
+    p => yAt(p.sessionPct),
+    p => colorFor(p.sessionPct, p.sessionResetMs, SESSION_WINDOW_MS)
+  );
+  // Weekly rendered slightly dimmer so Session remains the primary series.
+  ctx.globalAlpha = 0.55;
+  drawSeries(
+    p => yAt(p.weeklyPct),
+    p => colorFor(p.weeklyPct, p.weeklyResetMs, WEEKLY_WINDOW_MS)
+  );
+  ctx.globalAlpha = 1;
 
   if (rangeEl) {
     const spanMin = Math.round(tSpan / 60000);

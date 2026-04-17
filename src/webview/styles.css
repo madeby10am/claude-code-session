@@ -619,8 +619,13 @@ body:not(.dark) .time-marker { background: #111827; }
   flex-wrap: wrap;
 }
 .legend-item { display: inline-flex; align-items: center; gap: 4px; }
+.legend-pace {
+  display: inline-flex;
+  gap: 1px;
+  margin-left: 2px;
+}
 .legend-swatch {
-  width: 8px; height: 2px;
+  width: 8px; height: 4px;
   border-radius: 1px;
   display: inline-block;
 }

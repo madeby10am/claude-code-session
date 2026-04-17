@@ -2,9 +2,10 @@ import * as vscode from 'vscode';
 import { SessionManager } from './sessionManager';
 import { Panel } from './panel';
 import { UsagePoint } from './shared/messages';
+import { backfillUsageHistory } from './session/usageHistory';
 
 const HISTORY_KEY = 'usageHistory';
-const HISTORY_MAX = 240; // 4h at 60s cadence
+const HISTORY_MAX = 10_080; // 7 days at 60s cadence
 
 let sessionManager: SessionManager | undefined;
 let panel: Panel | undefined;
@@ -18,8 +19,21 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Load persisted usage history (ring buffer capped at HISTORY_MAX)
   let history: UsagePoint[] = context.globalState.get<UsagePoint[]>(HISTORY_KEY, []);
-  // Defensive: drop malformed entries from previous versions
   history = history.filter(p => p && typeof p.ts === 'number' && typeof p.sessionPct === 'number');
+
+  // If we have very little live history, seed the chart from 7 days of JSONL activity.
+  // This gives the user an immediate "last week" shape; new live ticks append to this.
+  if (history.length < 10) {
+    try {
+      const seeded = backfillUsageHistory(7);
+      if (seeded.length > 0) {
+        // Merge: historical points first, then any live points we already had.
+        const live = history.slice();
+        history = seeded.concat(live).slice(-HISTORY_MAX);
+        context.globalState.update(HISTORY_KEY, history);
+      }
+    } catch { /* back-fill is best-effort */ }
+  }
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -42,9 +56,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     if (usage.live) {
       history.push({
-        ts:         Date.now(),
-        sessionPct: usage.sessionPct,
-        weeklyPct:  usage.weeklyPct,
+        ts:             Date.now(),
+        sessionPct:     usage.sessionPct,
+        weeklyPct:      usage.weeklyPct,
+        sessionResetMs: usage.sessionResetMs,
+        weeklyResetMs:  usage.weeklyResetMs,
       });
       if (history.length > HISTORY_MAX) {
         history = history.slice(-HISTORY_MAX);
