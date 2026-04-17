@@ -729,6 +729,14 @@ body:not(.dark) .section-body.framed::before {
   background: linear-gradient(135deg, #111827, #374151);
 }
 
+/* Gray variant — softer frame for secondary sections */
+.section-body.framed.gray::before {
+  background: linear-gradient(135deg, #374151, #6b7280);
+}
+body:not(.dark) .section-body.framed.gray::before {
+  background: linear-gradient(135deg, #9ca3af, #d1d5db);
+}
+
 .usage-meter { }
 .usage-meter-label {
   display: flex;
