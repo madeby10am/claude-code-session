@@ -3,7 +3,7 @@
   "publisher": "madeby10am",
   "displayName": "Claude Code Session",
   "description": "Live sidebar for Claude Code — pixel-art robot companion, per-session dashboards, pace-based usage meters, token-rate chart, and git / skills / MCP browsers. Auto-matches your VS Code theme.",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
