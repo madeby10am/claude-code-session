@@ -46,14 +46,12 @@ export type ExtensionToWebview =
   | { type: 'projectInfo';    data: ProjectInfo }
   | { type: 'envData';        data: EnvData }
   | { type: 'usageUpdate';    usage: UsageStats }
-  | { type: 'tokenActivity';  events: TokenEvent[]; windowHours: number }
-  | { type: 'darkMode';       value: boolean };
+  | { type: 'tokenActivity';  events: TokenEvent[]; windowHours: number };
 
 export type WebviewToExtension =
   | { type: 'ready' }
   | { type: 'refreshUsage' }
   | { type: 'refreshTokenActivity' }
-  | { type: 'setDarkMode'; value: boolean }
   | { type: 'openUrl';     url: string }
   | { type: 'openFile';    file: string }
   | { type: 'openFolder';  path: string }

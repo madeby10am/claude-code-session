@@ -97,7 +97,6 @@ export class Panel implements vscode.WebviewViewProvider {
     if (msg.type === 'ready') {
       this.sendSessions(this.sessions);
       this.sendProjectInfo();
-      this.sendDarkMode();
       if (this.lastEnvData) {
         this.postMessage({ type: 'envData', data: this.lastEnvData });
       }
@@ -122,9 +121,6 @@ export class Panel implements vscode.WebviewViewProvider {
     }
     if (msg.type === 'refreshTokenActivity') {
       if (this.onRefreshTokenActivityCallback) { this.onRefreshTokenActivityCallback(); }
-    }
-    if (msg.type === 'setDarkMode') {
-      this.context.workspaceState.update('darkMode', msg.value);
     }
     if (msg.type === 'openUrl' && msg.url) {
       vscode.env.openExternal(vscode.Uri.parse(msg.url));
@@ -241,11 +237,6 @@ export class Panel implements vscode.WebviewViewProvider {
   private postMessage(msg: ExtensionToWebview): void {
     this.sidebarView?.webview.postMessage(msg);
     this.panel?.webview.postMessage(msg);
-  }
-
-  private sendDarkMode(): void {
-    const dark = this.context.workspaceState.get<boolean>('darkMode', false);
-    this.postMessage({ type: 'darkMode', value: dark });
   }
 
   sendSessions(sessions: Map<string, SessionState>): void {

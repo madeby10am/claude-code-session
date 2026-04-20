@@ -347,9 +347,6 @@ window.addEventListener('message', e => {
     renderTokenActivity(msg.events || []);
   }
 
-  if (msg.type === 'darkMode') {
-    applyDarkMode(msg.value);
-  }
 });
 
 // ─── Duration ticker — updates elapsed time every 1s ───────────────────────
@@ -597,11 +594,12 @@ function renderTokenActivity(events) {
   const niceMax = niceCeil(maxBucket) || 1;
   const yAt = (tok) => padT + (1 - Math.max(0, tok) / niceMax) * h;
 
-  // The body gets the .dark class only in dark mode; the default (no class)
-  // is light mode, so `contains('dark')` is the only correct check.
-  const isDark = document.body.classList.contains('dark');
+  // VS Code puts vscode-dark / vscode-light / vscode-high-contrast on <body>.
+  // Treat everything except vscode-light as "dark" (includes HC-dark).
+  const isDark = !document.body.classList.contains('vscode-light')
+              && !document.body.classList.contains('vscode-high-contrast-light');
   const gridColor  = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.18)';
-  const labelColor = (getComputedStyle(document.body).getPropertyValue('--text-muted') || '#6e7681').trim();
+  const labelColor = (getComputedStyle(document.body).getPropertyValue('--vscode-descriptionForeground') || '#6e7681').trim();
 
   // Horizontal grid + Y-axis labels (tokens)
   ctx.font = '9px ui-monospace, SFMono-Regular, monospace';
@@ -669,7 +667,7 @@ function renderTokenActivity(events) {
   const baselineY = padT + h;
   const barCenter = (i) => padL + i * slotW + slotW / 2;
   const yAtBucket = (i) => padT + h - (buckets[i] / niceMax) * h;
-  const lineColor = (getComputedStyle(document.body).getPropertyValue('--text-bright') || '#111').trim();
+  const lineColor = (getComputedStyle(document.body).getPropertyValue('--vscode-foreground') || (isDark ? '#e6edf3' : '#111827')).trim();
 
   ctx.beginPath();
   ctx.moveTo(padL, baselineY);
@@ -707,39 +705,84 @@ function refreshTokenActivity() {
   vscodeApi.postMessage({ type: 'refreshTokenActivity' });
 }
 
-// Window-toggle chips: 1h / 5h / 12h / 24h. Selection persists via setState.
-(function initTokenWindowChips() {
+// Window stepper: [<] [label] [>] with dropdown. Selection persists via setState.
+(function initTokenWindowStepper() {
+  const TOKEN_WINDOWS = [0.0833, 0.25, 0.5, 1, 5, 12, 24];
+  const TOKEN_LABELS  = ['5m',   '15m', '30m', '1h', '5h', '12h', '24h'];
+
   const saved = vscodeApi.getState && vscodeApi.getState();
   if (saved && typeof saved.tokenActivityWindow === 'number') {
     _tokenWindowHours = saved.tokenActivityWindow;
   }
-  const row = document.getElementById('token-window-filter');
-  if (!row) return;
-  row.querySelectorAll('.token-window-btn').forEach(btn => {
-    const hours = parseFloat(btn.dataset.window);
-    btn.dataset.active = String(hours === _tokenWindowHours);
-    btn.addEventListener('click', () => {
-      _tokenWindowHours = hours;
-      row.querySelectorAll('.token-window-btn').forEach(b => b.dataset.active = String(parseFloat(b.dataset.window) === hours));
-      const prev = (vscodeApi.getState && vscodeApi.getState()) || {};
-      vscodeApi.setState({ ...prev, tokenActivityWindow: hours });
-      renderTokenActivity();
+
+  const labelBtn  = document.getElementById('token-window-label-btn') as HTMLButtonElement | null;
+  const prevBtn   = document.getElementById('token-window-prev') as HTMLButtonElement | null;
+  const nextBtn   = document.getElementById('token-window-next') as HTMLButtonElement | null;
+  const dropdown  = document.getElementById('token-window-dropdown') as HTMLElement | null;
+
+  let dropdownOpen = false;
+
+  function currentIndex() {
+    const i = TOKEN_WINDOWS.indexOf(_tokenWindowHours);
+    return i >= 0 ? i : 4;
+  }
+
+  function setWindow(hours: number) {
+    _tokenWindowHours = hours;
+    const prev = (vscodeApi.getState && vscodeApi.getState()) || {};
+    vscodeApi.setState({ ...prev, tokenActivityWindow: hours });
+    const idx = TOKEN_WINDOWS.indexOf(hours);
+    if (labelBtn) labelBtn.textContent = TOKEN_LABELS[idx] ?? windowLabel(hours);
+    if (dropdown) {
+      dropdown.querySelectorAll('.token-window-option').forEach((btn: any) => {
+        btn.dataset.active = String(parseFloat(btn.dataset.window) === hours);
+      });
+    }
+    renderTokenActivity();
+  }
+
+  // Init label + active option
+  setWindow(_tokenWindowHours);
+
+  prevBtn?.addEventListener('click', () => {
+    const i = currentIndex();
+    if (i > 0) setWindow(TOKEN_WINDOWS[i - 1]);
+  });
+
+  nextBtn?.addEventListener('click', () => {
+    const i = currentIndex();
+    if (i < TOKEN_WINDOWS.length - 1) setWindow(TOKEN_WINDOWS[i + 1]);
+  });
+
+  labelBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    dropdownOpen = !dropdownOpen;
+    if (dropdown) dropdown.style.display = dropdownOpen ? 'flex' : 'none';
+  });
+
+  dropdown?.querySelectorAll('.token-window-option').forEach((btn: any) => {
+    btn.addEventListener('click', (e: Event) => {
+      e.stopPropagation();
+      setWindow(parseFloat(btn.dataset.window));
+      dropdownOpen = false;
+      if (dropdown) dropdown.style.display = 'none';
     });
+  });
+
+  document.addEventListener('click', () => {
+    if (dropdownOpen && dropdown) {
+      dropdownOpen = false;
+      dropdown.style.display = 'none';
+    }
   });
 })();
 
-// ─── Dark mode ─────────────────────────────────────────────────────────────
-function applyDarkMode(on) {
-  document.body.classList.toggle('dark', on);
-  const btn = document.getElementById('dark-toggle');
-  if (btn) btn.dataset.on = String(on);
-}
-
-document.getElementById('dark-toggle').addEventListener('click', () => {
-  const isOn = document.body.classList.toggle('dark');
-  document.getElementById('dark-toggle').dataset.on = String(isOn);
-  vscodeApi.postMessage({ type: 'setDarkMode', value: isOn });
-});
+// ─── Theme change → re-render canvas ───────────────────────────────────────
+// VS Code swaps classes on <body> (vscode-dark / vscode-light / vscode-high-contrast)
+// when the theme changes. CSS vars update automatically, but the canvas is raster
+// and needs an explicit redraw to pick up the new foreground color.
+new MutationObserver(() => renderTokenActivity(undefined as any))
+  .observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 
 // new-session-btn click is handled inline via onclick

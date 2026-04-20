@@ -1,16 +1,16 @@
-/* ===== CSS Variables ===== */
+/* ===== CSS Variables — auto-match the active VS Code theme ===== */
 :root {
-  --bg: #0b0e14;
-  --bg-card: rgba(22, 27, 34, 0.8);
-  --bg-card-hover: rgba(30, 37, 46, 0.9);
-  --border: rgba(48, 54, 61, 0.6);
-  --border-hover: rgba(80, 90, 100, 0.6);
-  --text: #c9d1d9;
-  --text-bright: #e6edf3;
-  --text-dim: #6e7681;
-  --text-muted: #484f58;
-  --accent: #22d3ee;
-  --accent-dim: rgba(34, 211, 238, 0.15);
+  --bg:            var(--vscode-sideBar-background);
+  --bg-card:       color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background));
+  --bg-card-hover: var(--vscode-list-hoverBackground);
+  --border:        var(--vscode-sideBar-border, color-mix(in srgb, var(--vscode-foreground) 18%, transparent));
+  --border-hover:  color-mix(in srgb, var(--vscode-foreground) 32%, transparent);
+  --text:          var(--vscode-sideBar-foreground, var(--vscode-foreground));
+  --text-bright:   var(--vscode-foreground);
+  --text-dim:      var(--vscode-descriptionForeground);
+  --text-muted:    color-mix(in srgb, var(--vscode-descriptionForeground) 60%, transparent);
+  --accent:        var(--vscode-textLink-foreground, var(--vscode-focusBorder));
+  --accent-dim:    color-mix(in srgb, var(--vscode-textLink-foreground, var(--vscode-focusBorder)) 15%, transparent);
   --green: #10b981;
   --blue: #3b82f6;
   --purple: #a78bfa;
@@ -411,11 +411,10 @@ body::before {
 .context-bar-track {
   width: 100%;
   height: 5px;
-  background: rgba(255,255,255,0.1);
+  background: color-mix(in srgb, var(--vscode-foreground) 12%, transparent);
   border-radius: 2px;
   overflow: hidden;
 }
-body:not(.dark) .context-bar-track { background: #e5e7eb; }
 .context-bar-fill {
   height: 100%;
   border-radius: 2px;
@@ -433,12 +432,11 @@ body:not(.dark) .context-bar-track { background: #e5e7eb; }
   top: -2px;
   width: 2px;
   height: calc(100% + 4px);
-  background: #e6edf3;
+  background: var(--vscode-foreground);
   border-radius: 1px;
   transition: left 1s ease;
   z-index: 2;
 }
-body:not(.dark) .time-marker { background: #111827; }
 
 
 /* Empty state */
@@ -669,23 +667,91 @@ body:not(.dark) .time-marker { background: #111827; }
   gap: 6px;
   padding-top: 4px;
 }
-#token-window-filter {
+/* Token window stepper: [<] [label] [>] + dropdown */
+#token-window-filter.token-window-stepper {
   display: flex;
-  gap: 3px;
-  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+}
+.token-window-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-bright);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.token-window-arrow:hover {
+  border-color: var(--text-bright);
+  background: rgba(255,255,255,0.05);
+}
+.token-window-label {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  height: 20px;
+  border-radius: 4px;
+  border: 1px solid var(--text-bright);
+  background: var(--text-bright);
+  color: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  transition: opacity 0.15s;
+  min-width: 28px;
+  text-align: center;
+}
+.token-window-label:hover { opacity: 0.8; }
+.token-window-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border-hover);
+  border-radius: 6px;
+  padding: 3px;
+  flex-direction: column;
+  gap: 1px;
+  z-index: 50;
+  min-width: 52px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}
+.token-window-option {
+  font-size: 11px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+  text-align: center;
+  transition: all 0.1s;
+  width: 100%;
+}
+.token-window-option:hover {
+  background: var(--accent-dim);
+  color: var(--text-bright);
+}
+.token-window-option[data-active="true"] {
+  background: var(--text-bright);
+  color: var(--bg);
+  font-weight: 700;
 }
 
-/* Scoped override: chips and refresh inside Token Activity use black/white,
-   never the cyan accent. */
-#token-activity-section .token-window-btn:hover,
+/* Scoped override: refresh button inside Token Activity uses black/white, never cyan. */
 #token-activity-section .card-refresh-btn:hover {
   border-color: var(--text-bright);
   color: var(--text-bright);
-}
-#token-activity-section .token-window-btn[data-active="true"] {
-  background: var(--text-bright);
-  color: var(--bg);
-  border-color: var(--text-bright);
 }
 
 /* Same treatment inside Skills — source and category chips drop the cyan
@@ -700,14 +766,6 @@ body:not(.dark) .time-marker { background: #111827; }
   background: var(--text-bright);
   color: var(--bg);
   border-color: var(--text-bright);
-}
-
-/* Square chips that match the refresh button's shape/size. */
-#token-activity-section .token-window-btn {
-  border-radius: 4px;
-  padding: 2px 6px;
-  font-size: 11px;
-  line-height: 1;
 }
 
 /* CLI group labels */
@@ -834,7 +892,9 @@ body:not(.dark) .time-marker { background: #111827; }
   position: absolute;
   inset: 0;
   border-radius: 10px;
-  background: linear-gradient(135deg, #0a0a0a, #1f2937);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--vscode-foreground) 40%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 12%, transparent));
   z-index: 0;
 }
 .section-body.framed::after {
@@ -846,16 +906,12 @@ body:not(.dark) .time-marker { background: #111827; }
   z-index: 0;
 }
 .section-body.framed > * { position: relative; z-index: 1; }
-body:not(.dark) .section-body.framed::before {
-  background: linear-gradient(135deg, #111827, #374151);
-}
 
 /* Gray variant — softer frame for secondary sections */
 .section-body.framed.gray::before {
-  background: linear-gradient(135deg, #374151, #6b7280);
-}
-body:not(.dark) .section-body.framed.gray::before {
-  background: linear-gradient(135deg, #9ca3af, #d1d5db);
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--vscode-foreground) 28%, transparent),
+    color-mix(in srgb, var(--vscode-foreground) 8%, transparent));
 }
 
 .usage-meter { }
@@ -893,37 +949,6 @@ body:not(.dark) .section-body.framed.gray::before {
   50% { opacity: 0.8; transform: scale(0.97); }
 }
 
-/* ===== Dark mode toggle ===== */
-.dark-toggle {
-  width: 32px; height: 18px;
-  border-radius: 9px;
-  background: rgba(255,255,255,0.1);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  position: relative;
-  flex-shrink: 0;
-  transition: background 0.3s, border-color 0.3s;
-  padding: 0;
-}
-.dark-toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  background: var(--text-bright);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: none;
-}
-.dark-toggle[data-on="true"]::after {
-  transform: translateX(14px);
-}
-.dark-toggle:hover { border-color: var(--text-bright); }
-.toggle-sun { color: var(--amber); }
-.toggle-moon { color: var(--text-muted); }
-.dark-toggle[data-on="true"] .toggle-sun { color: var(--text-muted); }
-.dark-toggle[data-on="true"] .toggle-moon { color: var(--amber); }
-
 /* ===== Responsive: narrow sidebar ===== */
 @media (max-width: 220px) {
   .header { padding: 6px 10px; gap: 6px; }
@@ -952,22 +977,6 @@ body:not(.dark) .section-body.framed.gray::before {
   .stats-grid { display: none; }
   .session-name { font-size: 11px; }
 }
-
-/* ===== Light mode overrides (dark is default) ===== */
-body:not(.dark) {
-  --bg: #f8f9fa;
-  --bg-card: rgba(255,255,255,0.9);
-  --bg-card-hover: rgba(255,255,255,1);
-  --border: rgba(0,0,0,0.08);
-  --border-hover: rgba(0,0,0,0.15);
-  --text: #374151;
-  --text-bright: #111827;
-  --text-dim: #6b7280;
-  --text-muted: #9ca3af;
-  --accent: #0891b2;
-  --accent-dim: rgba(8,145,178,0.1);
-}
-body:not(.dark)::before { opacity: 0.015; }
 
 /* Robot status bar (sticky header row 2) */
 .robot-bar {

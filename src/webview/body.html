@@ -8,12 +8,6 @@
         <span class="header-project" id="pi-workspace"></span>
         <span class="header-path" id="pi-path" onclick="if(this.dataset.path)vscodeApi.postMessage({type:'openFolder',path:this.dataset.path})"></span>
       </div>
-      <div class="header-right" style="display:flex;align-items:center;gap:6px;">
-        <button class="dark-toggle" id="dark-toggle" data-on="false" title="Toggle dark mode">
-          <svg class="toggle-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;position:absolute;left:3px;top:3px;"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-          <svg class="toggle-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:10px;height:10px;position:absolute;right:3px;top:3px;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        </button>
-      </div>
     </div>
     <!-- ROBOT STATUS BAR -->
     <div class="robot-bar">
@@ -85,14 +79,19 @@
       <canvas id="token-activity-canvas" width="400" height="75" style="width:100%;height:75px;display:block;"></canvas>
       <div id="token-activity-empty" class="cap-item" style="color:var(--text-muted);padding-top:2px;">No messages in the selected window.</div>
       <div class="token-activity-footer">
-        <div id="token-window-filter">
-          <button class="token-window-btn" data-window="0.0833" data-active="false">5m</button>
-          <button class="token-window-btn" data-window="0.25"   data-active="false">15m</button>
-          <button class="token-window-btn" data-window="0.5"    data-active="false">30m</button>
-          <button class="token-window-btn" data-window="1"      data-active="false">1h</button>
-          <button class="token-window-btn" data-window="5"      data-active="true">5h</button>
-          <button class="token-window-btn" data-window="12"     data-active="false">12h</button>
-          <button class="token-window-btn" data-window="24"     data-active="false">24h</button>
+        <div id="token-window-filter" class="token-window-stepper">
+          <button class="token-window-arrow" id="token-window-prev" title="Earlier window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <button class="token-window-label" id="token-window-label-btn">5h</button>
+          <button class="token-window-arrow" id="token-window-next" title="Later window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><polyline points="9 6 15 12 9 18"/></svg></button>
+          <div id="token-window-dropdown" class="token-window-dropdown" style="display:none;">
+            <button class="token-window-option" data-window="0.0833">5m</button>
+            <button class="token-window-option" data-window="0.25">15m</button>
+            <button class="token-window-option" data-window="0.5">30m</button>
+            <button class="token-window-option" data-window="1">1h</button>
+            <button class="token-window-option" data-window="5">5h</button>
+            <button class="token-window-option" data-window="12">12h</button>
+            <button class="token-window-option" data-window="24">24h</button>
+          </div>
         </div>
         <button class="card-refresh-btn" title="Refresh" onclick="event.stopPropagation();refreshTokenActivity();">&#x21bb;</button>
       </div>
