@@ -716,7 +716,7 @@ function renderTokenActivity(events) {
     ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, xs[i + 1], ys[i + 1]);
   }
   ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 1.75;
+  ctx.lineWidth = 1.25;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.stroke();
