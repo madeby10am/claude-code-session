@@ -2,7 +2,7 @@
   "name": "claude-code-session",
   "publisher": "madeby10am",
   "displayName": "Claude Code Session",
-  "description": "Monitor Claude Code sessions with a pixel art companion -- live activity badges, gradient border glows, token tracking, and an animated robot sidebar.",
+  "description": "Live sidebar for Claude Code — pixel-art robot companion, per-session dashboards, pace-based usage meters, token-rate chart, and git / skills / MCP browsers. Auto-matches your VS Code theme.",
   "version": "2.0.1",
   "license": "MIT",
   "icon": "assets/icon.png",
