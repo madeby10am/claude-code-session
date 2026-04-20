@@ -3,5 +3,6 @@ out/
 *.vsix
 .DS_Store
 .vscode/
-.claude/
+.claude/*
+!.claude/commands/
 .superpowers/
