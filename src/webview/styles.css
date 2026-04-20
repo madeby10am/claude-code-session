@@ -116,34 +116,41 @@ body::before {
   gap: 6px;
   transition: color 0.15s;
 }
-/* Per-section hover color — each section gets its own neon tech accent. */
-#sessions-section        .section-header:hover,
-#sessions-section        .section-header:hover .section-chevron,
-#sessions-section        .section-header:hover .section-icon    { color: #3b82f6; }  /* blue */
-#usage-section           .section-header:hover,
-#usage-section           .section-header:hover .section-chevron,
-#usage-section           .section-header:hover .section-icon    { color: #f59e0b; }  /* amber */
-#token-activity-section  .section-header:hover,
-#token-activity-section  .section-header:hover .section-chevron,
-#token-activity-section  .section-header:hover .section-icon    { color: #10b981; }  /* emerald */
-#git-status-section      .section-header:hover,
-#git-status-section      .section-header:hover .section-chevron,
-#git-status-section      .section-header:hover .section-icon    { color: #f97316; }  /* orange */
-#recent-files-section    .section-header:hover,
-#recent-files-section    .section-header:hover .section-chevron,
-#recent-files-section    .section-header:hover .section-icon    { color: #8b5cf6; }  /* violet */
-#session-history-section .section-header:hover,
-#session-history-section .section-header:hover .section-chevron,
-#session-history-section .section-header:hover .section-icon    { color: #0ea5e9; }  /* sky */
-#mcp-section             .section-header:hover,
-#mcp-section             .section-header:hover .section-chevron,
-#mcp-section             .section-header:hover .section-icon    { color: #ec4899; }  /* magenta */
-#skills-section          .section-header:hover,
-#skills-section          .section-header:hover .section-chevron,
-#skills-section          .section-header:hover .section-icon    { color: #eab308; }  /* yellow */
-#cli-section             .section-header:hover,
-#cli-section             .section-header:hover .section-chevron,
-#cli-section             .section-header:hover .section-icon    { color: #14b8a6; }  /* teal */
+/* Per-section default color — each section gets its own neon tech accent. */
+#sessions-section        .section-header,
+#sessions-section        .section-header .section-chevron,
+#sessions-section        .section-header .section-icon    { color: #3b82f6; }  /* blue */
+#usage-section           .section-header,
+#usage-section           .section-header .section-chevron,
+#usage-section           .section-header .section-icon    { color: #f59e0b; }  /* amber */
+#token-activity-section  .section-header,
+#token-activity-section  .section-header .section-chevron,
+#token-activity-section  .section-header .section-icon    { color: #10b981; }  /* emerald */
+#git-status-section      .section-header,
+#git-status-section      .section-header .section-chevron,
+#git-status-section      .section-header .section-icon    { color: #f97316; }  /* orange */
+#recent-files-section    .section-header,
+#recent-files-section    .section-header .section-chevron,
+#recent-files-section    .section-header .section-icon    { color: #8b5cf6; }  /* violet */
+#session-history-section .section-header,
+#session-history-section .section-header .section-chevron,
+#session-history-section .section-header .section-icon    { color: #0ea5e9; }  /* sky */
+#mcp-section             .section-header,
+#mcp-section             .section-header .section-chevron,
+#mcp-section             .section-header .section-icon    { color: #ec4899; }  /* magenta */
+#skills-section          .section-header,
+#skills-section          .section-header .section-chevron,
+#skills-section          .section-header .section-icon    { color: #eab308; }  /* yellow */
+#cli-section             .section-header,
+#cli-section             .section-header .section-chevron,
+#cli-section             .section-header .section-icon    { color: #14b8a6; }  /* teal */
+
+/* Hover flips every section header to the theme's bright foreground
+   (near-white in dark themes, near-black in light). The #root prefix
+   raises specificity so it beats the per-section default colors above. */
+#root .section-header:hover,
+#root .section-header:hover .section-chevron,
+#root .section-header:hover .section-icon { color: var(--vscode-foreground); }
 .section-icon {
   width: 12px;
   height: 12px;
@@ -982,7 +989,7 @@ body::before {
 .robot-bar {
   display: flex;
   align-items: center;
-  padding: 3px 6px 5px 11px;
+  padding: 3px 6px 5px 4px;
   gap: 0;
   border-bottom: 1px solid var(--border);
   background: rgba(255,255,255,0.02);
