@@ -78,7 +78,7 @@
     "watch:webview": "esbuild src/webview/index.ts --bundle --outfile=out/webview/bundle.js --format=iife --target=es2020 --watch",
     "generate-sprites": "ts-node --project tsconfig.scripts.json scripts/generate-sprites.ts",
     "test": "vitest run",
-    "package": "vsce package --out claude-code-session-$npm_package_version.vsix",
+    "package": "npx --yes @vscode/vsce package --out claude-code-session-$npm_package_version.vsix",
     "release": "npm run package && gh release upload v$npm_package_version claude-code-session-$npm_package_version.vsix --clobber"
   },
   "devDependencies": {
