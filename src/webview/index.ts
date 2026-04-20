@@ -669,14 +669,54 @@ function renderTokenActivity(events) {
   const yAtBucket = (i) => padT + h - (buckets[i] / niceMax) * h;
   const lineColor = (getComputedStyle(document.body).getPropertyValue('--vscode-foreground') || (isDark ? '#e6edf3' : '#111827')).trim();
 
-  ctx.beginPath();
-  ctx.moveTo(padL, baselineY);
-  for (let i = 0; i < numBuckets; i++) {
-    ctx.lineTo(barCenter(i), yAtBucket(i));
+  // Build the polyline: baseline anchor, bar tops, baseline anchor. Then draw
+  // it as a monotone cubic Hermite spline (Fritsch-Carlson) so the curve is
+  // smooth but never overshoots — a 0→peak→0 sequence stays pinned at 0 and
+  // never dips below the baseline.
+  const xs: number[] = [padL];
+  const ys: number[] = [baselineY];
+  for (let i = 0; i < numBuckets; i++) { xs.push(barCenter(i)); ys.push(yAtBucket(i)); }
+  xs.push(padL + w); ys.push(baselineY);
+
+  const n = xs.length;
+  const dx: number[] = new Array(n - 1);
+  const slope: number[] = new Array(n - 1);
+  for (let i = 0; i < n - 1; i++) {
+    dx[i] = xs[i + 1] - xs[i];
+    slope[i] = (ys[i + 1] - ys[i]) / dx[i];
   }
-  ctx.lineTo(padL + w, baselineY);
+  const m: number[] = new Array(n);
+  m[0] = slope[0];
+  m[n - 1] = slope[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    if (slope[i - 1] * slope[i] <= 0) m[i] = 0; // extremum → flat tangent
+    else m[i] = (slope[i - 1] + slope[i]) / 2;
+  }
+  // Fritsch-Carlson clamp: ensure |alpha|,|beta| stay within the monotone region.
+  for (let i = 0; i < n - 1; i++) {
+    if (slope[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    const a = m[i] / slope[i];
+    const b = m[i + 1] / slope[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const t = 3 / Math.sqrt(s);
+      m[i] = t * a * slope[i];
+      m[i + 1] = t * b * slope[i];
+    }
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(xs[0], ys[0]);
+  for (let i = 0; i < n - 1; i++) {
+    // Hermite → Bezier: control points at 1/3 of tangent length into each end.
+    const cp1x = xs[i] + dx[i] / 3;
+    const cp1y = ys[i] + m[i] * dx[i] / 3;
+    const cp2x = xs[i + 1] - dx[i] / 3;
+    const cp2y = ys[i + 1] - m[i + 1] * dx[i] / 3;
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, xs[i + 1], ys[i + 1]);
+  }
   ctx.strokeStyle = lineColor;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 1.75;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
   ctx.stroke();
