@@ -1,17 +1,45 @@
 import { execFileSync } from 'child_process';
+import { readFileSync } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { UsageStats } from './types';
+
+function readCredentialsFromFile(): string {
+  const credPath = join(homedir(), '.claude', '.credentials.json');
+  return readFileSync(credPath, 'utf8').trim();
+}
+
+function readCredentialsFromKeychain(): string {
+  return execFileSync(
+    'security',
+    ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+    { encoding: 'utf8', timeout: 3000 }
+  ).trim();
+}
+
+/**
+ * Read Claude Code OAuth credentials.
+ *
+ * - macOS: tries the system Keychain first, falls back to ~/.claude/.credentials.json
+ * - Windows / Linux: reads ~/.claude/.credentials.json directly
+ */
+function readCredentials(): string {
+  if (process.platform === 'darwin') {
+    try {
+      const raw = readCredentialsFromKeychain();
+      if (raw) { return raw; }
+    } catch { /* keychain unavailable — fall through to file */ }
+    return readCredentialsFromFile();
+  }
+  return readCredentialsFromFile();
+}
 
 /**
  * Fetch live usage data by making a minimal API call to read rate limit headers.
- * Uses the OAuth token from the macOS Keychain (stored by Claude Code CLI).
  */
 export function computeUsageFromLogs(): UsageStats {
   try {
-    const raw = execFileSync(
-      'security',
-      ['find-generic-password', '-s', 'Claude Code-credentials', '-w'],
-      { encoding: 'utf8', timeout: 3000 }
-    ).trim();
+    const raw = readCredentials();
     if (!raw) { throw new Error('no credentials'); }
     const creds = JSON.parse(raw);
     const oauth = creds?.claudeAiOauth;
