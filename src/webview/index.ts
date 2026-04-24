@@ -669,10 +669,8 @@ function renderTokenActivity(events) {
   const yAtBucket = (i) => padT + h - (buckets[i] / niceMax) * h;
   const lineColor = (getComputedStyle(document.body).getPropertyValue('--vscode-foreground') || (isDark ? '#e6edf3' : '#111827')).trim();
 
-  // Build the polyline: baseline anchor, bar tops, baseline anchor. Then draw
-  // it as a monotone cubic Hermite spline (Fritsch-Carlson) so the curve is
-  // smooth but never overshoots — a 0→peak→0 sequence stays pinned at 0 and
-  // never dips below the baseline.
+  // Monotone cubic Hermite (Fritsch-Carlson): smooth, and guaranteed not to
+  // dip below the baseline on 0 → peak → 0 transitions.
   const xs: number[] = [padL];
   const ys: number[] = [baselineY];
   for (let i = 0; i < numBuckets; i++) { xs.push(barCenter(i)); ys.push(yAtBucket(i)); }
@@ -694,7 +692,7 @@ function renderTokenActivity(events) {
   }
   // Fritsch-Carlson clamp: ensure |alpha|,|beta| stay within the monotone region.
   for (let i = 0; i < n - 1; i++) {
-    if (slope[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+    if (slope[i] === 0) { m[i] = 0; continue; }
     const a = m[i] / slope[i];
     const b = m[i + 1] / slope[i];
     const s = a * a + b * b;
@@ -708,7 +706,6 @@ function renderTokenActivity(events) {
   ctx.beginPath();
   ctx.moveTo(xs[0], ys[0]);
   for (let i = 0; i < n - 1; i++) {
-    // Hermite → Bezier: control points at 1/3 of tangent length into each end.
     const cp1x = xs[i] + dx[i] / 3;
     const cp1y = ys[i] + m[i] * dx[i] / 3;
     const cp2x = xs[i + 1] - dx[i] / 3;
