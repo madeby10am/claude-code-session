@@ -56,14 +56,16 @@ export function computeUsageFromLogs(): UsageStats {
 
     // Token travels via env, not argv — command lines are visible to every
     // process on the machine (ps), environment variables are not.
+    // OAuth tokens authenticate via "Authorization: Bearer" plus the
+    // oauth beta header; the API rejects them on x-api-key (401).
     const result = execFileSync(
       'node',
       ['-e', `
 const https=require('https');
 const body=JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1,messages:[{role:'user',content:'h'}]});
-const req=https.request({hostname:'api.anthropic.com',path:'/v1/messages',method:'POST',headers:{'x-api-key':process.env.CLAUDE_USAGE_TOKEN,'anthropic-version':'2023-06-01','Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
+const req=https.request({hostname:'api.anthropic.com',path:'/v1/messages',method:'POST',headers:{'Authorization':'Bearer '+process.env.CLAUDE_USAGE_TOKEN,'anthropic-beta':'oauth-2025-04-20','anthropic-version':'2023-06-01','Content-Type':'application/json','Content-Length':Buffer.byteLength(body)}},res=>{
   const h=res.headers;
-  const out={sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10),ov:h['anthropic-ratelimit-unified-overage-in-use']==='true'};
+  const out={st:res.statusCode,sp:parseFloat(h['anthropic-ratelimit-unified-5h-utilization']||'0'),wp:parseFloat(h['anthropic-ratelimit-unified-7d-utilization']||'0'),sr:parseInt(h['anthropic-ratelimit-unified-5h-reset']||'0',10),wr:parseInt(h['anthropic-ratelimit-unified-7d-reset']||'0',10),ov:h['anthropic-ratelimit-unified-overage-in-use']==='true'};
   let d='';res.on('data',c=>d+=c);res.on('end',()=>console.log(JSON.stringify(out)));
 });
 req.on('error',()=>console.log('{}'));
@@ -78,6 +80,9 @@ req.write(body);req.end();
 
     if (result) {
       const d = JSON.parse(result);
+      // Non-2xx responses (expired token, auth change) carry no rate-limit
+      // headers — treat them as "not live" instead of rendering fake 0%.
+      if (typeof d.st !== 'number' || d.st >= 300) { throw new Error('usage probe failed: ' + d.st); }
       const nowSec = Math.floor(Date.now() / 1000);
       return {
         sessionPct:      Math.round(d.sp * 100),
