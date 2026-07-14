@@ -21,11 +21,15 @@ A VS Code extension ("Claude Code Session") that monitors Claude Code CLI sessio
 
 **Data flow:** `~/.claude/projects/**/*.jsonl` → `SessionManager` → `Panel` → Webview
 
+**Per-window scoping:** Each VS Code window runs its own extension host. `SessionManager` receives the window's workspace folder paths and only watches the matching project-log folders under `~/.claude/projects/` (folder names are the project path with non-alphanumerics replaced by `-`; subdirectory sessions match by prefix). A window with no folder open shows all sessions. The manager is rebuilt on `onDidChangeWorkspaceFolders`.
+
 ### Source files (`src/`)
 
-- **extension.ts** — Entry point. Wires `SessionManager` → `Panel`, registers the `claude-code-session.sidebar` webview view provider and the `claude-code-session.open` command.
-- **sessionManager.ts** — File-watches `~/.claude/projects/` for JSONL session logs. Parses entries to extract session metadata (tokens, activity state, tool usage, model, context %). Emits `Map<string, SessionState>` updates via callback with 100ms debounce. Activity state machine: `idle → user_sent → tooling → responding → idle → sleeping`.
-- **panel.ts** — `WebviewViewProvider` class containing the entire inline HTML/CSS/JS for the sidebar webview in `buildHtml()`. Handles session card rendering, robot sprite animation (30 FPS, sprite frames at ~7 FPS), speech bubble, and the attention badge.
+- **extension.ts** — Entry point. Wires `SessionManager` → `Panel`, registers the `claude-code-session.sidebar` webview view provider and the `claude-code-session.open` command. Passes workspace roots to `SessionManager`.
+- **sessionManager.ts** — File-watches `~/.claude/projects/` for JSONL session logs (filtered to this window's projects). Parses entries to extract session metadata (tokens, activity state, tool usage, model, context %). Emits `Map<string, SessionState>` updates via callback with 100ms debounce. Activity state machine: `idle → user_sent → tooling → responding → idle → sleeping`.
+- **session/** — Parsing and data modules: `jsonlParser.ts` (JSONL → SessionState; one API response spans multiple lines sharing a `message.id` — usage is counted once per id), `tokenActivity.ts` (24h token events for the chart, same dedupe), `usageCompute.ts` (live rate-limit meters via OAuth token from Keychain), `claudeEnvironment.ts` (paths, MCP servers, skills, `encodeProjectPath`), `activityTimers.ts`, `categorize.ts`, `clis.ts`, `types.ts`.
+- **panel.ts** — `WebviewViewProvider`. Builds the webview HTML shell from `src/webview/body.html` + `styles.css` + the esbuild bundle, handles webview messages, session focus, and project info (git via `execSync`; `gh repo view` cached 5 min).
+- **webview/index.ts** — All webview-side JS (session cards, robot sprite animation, usage meters, token chart). Bundled by esbuild to `out/webview/bundle.js`.
 
 ### Webview message protocol
 
@@ -49,7 +53,7 @@ Webview → Extension (via `vscodeApi.postMessage`):
 
 ## Key Conventions
 
-- **Inline webview**: All HTML, CSS, and JS lives in the template string returned by `panel.ts:buildHtml()`. No separate `.html` or `.css` files.
+- **Webview assets**: HTML body and CSS live in `src/webview/body.html` / `styles.css`; JS in `src/webview/index.ts` (esbuild bundle). `panel.ts:buildHtml()` only assembles the shell.
 - **Sprite sheet**: Robot character from `assets/Robot Character/Sprite sheets/Directional sprite sheets/Down sprite sheet.png`. URI injected via `webview.asWebviewUri()`. Always set `ctx.imageSmoothingEnabled = false` after `scale()`; CSS uses `image-rendering: pixelated`.
 - **No runtime dependencies**: Only VS Code API and Node built-ins at runtime. `canvas` and `vitest` are dev-only.
 - **Tests**: Some test files reference stale architecture classes (`StateManager`, `ActivityMonitor`, `ClaudeWatcher`) that no longer exist. Current tests use the VS Code API mock at `test/__mocks__/vscode.ts`.

@@ -53,15 +53,26 @@ export interface SessionEntry {
   filePath:    string;
   idleTimer:   ReturnType<typeof setTimeout> | null;
   sleepTimer:  ReturnType<typeof setTimeout> | null;
+  // One API response is written as several JSONL lines sharing a message.id,
+  // each repeating the same usage — count usage once per id.
+  lastUsageMsgId?: string;
 }
 
-// Pattern-match the model family so new minor versions (opus-4-7, sonnet-4-8, …) work
-// without a code change. Haiku is the small-context outlier.
+// Pattern-match the model family so new versions work without a code change.
+// 1M context: Fable/Mythos 5, Opus 4.6+, Sonnet 4.6+ (and Sonnet 5).
+// 200K: Haiku (all), and older Opus/Sonnet (4.5, 4.1, 4.0, 3.x).
 export function getContextLimit(model: string): number {
   if (!model) return 200_000;
   const m = model.toLowerCase();
   if (m.includes('haiku')) return 200_000;
-  if (m.includes('opus') || m.includes('sonnet')) return 1_000_000;
+  if (m.includes('fable') || m.includes('mythos')) return 1_000_000;
+  if (m.includes('opus') || m.includes('sonnet')) {
+    const ver = m.match(/-(\d+)-(\d+)/);
+    if (!ver) return 1_000_000; // e.g. "claude-sonnet-5" — current generation
+    const major = parseInt(ver[1], 10);
+    const minor = parseInt(ver[2], 10);
+    return major > 4 || (major === 4 && minor >= 6) ? 1_000_000 : 200_000;
+  }
   return 200_000;
 }
 

@@ -10,9 +10,15 @@ let panel: Panel | undefined;
 export function activate(context: vscode.ExtensionContext) {
   panel = Panel.createProvider(context);
 
-  sessionManager = new SessionManager((sessions) => {
+  // Each VS Code window runs its own extension host, so scoping the manager
+  // to this window's workspace folders makes each window track its own project.
+  const onSessions = (sessions: Parameters<Panel['sendSessions']>[0]) => {
     panel!.sendSessions(sessions);
-  });
+  };
+  const workspaceRoots = () =>
+    (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
+
+  sessionManager = new SessionManager(onSessions, workspaceRoots());
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -59,6 +65,16 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Fresh data on sidebar open
   panel.onReady(() => { usageTick(); envTick(); tokenTick(); });
+
+  // Folders added/removed in this window → rebuild the manager with the new scope
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      sessionManager?.dispose();
+      sessionManager = new SessionManager(onSessions, workspaceRoots());
+      envTick();
+      tokenTick();
+    })
+  );
 
   // Manual refresh from the webview
   panel.onRefreshTokenActivity(() => tokenTick());

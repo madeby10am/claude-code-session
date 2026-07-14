@@ -120,6 +120,49 @@ describe('parseLines', () => {
     expect(captured).toEqual(['old-id', 'new-id']);
   });
 
+  it('records usage on tool_use lines, not just end_turn', () => {
+    const entry = newEntry();
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'msg_a',
+        model: 'claude-fable-5',
+        stop_reason: 'tool_use',
+        content: [{ type: 'tool_use', name: 'Read', input: { file_path: '/a.ts' } }],
+        usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 500 },
+      },
+      cwd: '/Users/niko/repo',
+    });
+    parseLines(line, entry);
+    expect(entry.state.inputTokens).toBe(510);
+    expect(entry.state.outputTokens).toBe(20);
+    expect(entry.state.model).toBe('claude-fable-5');
+    expect(entry.state.cwd).toBe('/Users/niko/repo');
+  });
+
+  it('counts usage once per message.id across split lines', () => {
+    const entry = newEntry();
+    const mkLine = (block: unknown) => JSON.stringify({
+      type: 'assistant',
+      message: {
+        id: 'msg_dup',
+        stop_reason: 'tool_use',
+        content: [block],
+        usage: { input_tokens: 2, output_tokens: 100, cache_read_input_tokens: 1000 },
+      },
+    });
+    // One API response written as three JSONL lines with identical usage
+    const raw = [
+      mkLine({ type: 'text', text: 'working on it' }),
+      mkLine({ type: 'tool_use', name: 'Read', input: { file_path: '/a.ts' } }),
+      mkLine({ type: 'tool_use', name: 'Read', input: { file_path: '/b.ts' } }),
+    ].join('\n');
+    parseLines(raw, entry);
+    expect(entry.state.inputTokens).toBe(1002);
+    expect(entry.state.outputTokens).toBe(100);
+    expect(entry.state.toolUseCount).toBe(2);
+  });
+
   it('increments toolUseCount for tool_use blocks', () => {
     const entry = newEntry();
     const line = JSON.stringify({

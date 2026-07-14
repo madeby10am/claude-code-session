@@ -9,10 +9,11 @@ export interface TokenEvent {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function collectRecentJsonlFiles(cutoffTs: number): string[] {
+function collectRecentJsonlFiles(cutoffTs: number, slugFilter?: (slug: string) => boolean): string[] {
   const out: string[] = [];
   try {
     for (const slug of fs.readdirSync(CLAUDE_PROJECTS_DIR)) {
+      if (slugFilter && !slugFilter(slug)) continue;
       const slugDir = path.join(CLAUDE_PROJECTS_DIR, slug);
       let stat: fs.Stats;
       try { stat = fs.statSync(slugDir); } catch { continue; }
@@ -37,10 +38,13 @@ function collectRecentJsonlFiles(cutoffTs: number): string[] {
  * timestamp and real token cost (input + cache_creation + cache_read + output).
  * No estimation — these numbers come straight from the JSONL session logs.
  */
-export function getRecentTokenEvents(hours = 24): TokenEvent[] {
+export function getRecentTokenEvents(
+  hours = 24,
+  slugFilter?: (slug: string) => boolean
+): TokenEvent[] {
   const now      = Date.now();
   const cutoffTs = now - hours * 60 * 60 * 1000;
-  const files    = collectRecentJsonlFiles(cutoffTs);
+  const files    = collectRecentJsonlFiles(cutoffTs, slugFilter);
   const events: TokenEvent[] = [];
 
   for (const filePath of files) {
@@ -48,11 +52,21 @@ export function getRecentTokenEvents(hours = 24): TokenEvent[] {
     try { content = fs.readFileSync(filePath, 'utf8'); }
     catch { continue; }
 
+    // One API response spans several adjacent lines with the same message.id,
+    // each repeating the same usage — count each id once.
+    let lastMsgId: string | undefined;
+
     for (const line of content.split('\n')) {
       if (!line || !line.includes('"usage"')) continue;
       let obj: any;
       try { obj = JSON.parse(line); } catch { continue; }
       if (obj?.type !== 'assistant') continue;
+
+      const msgId = obj.message?.id as string | undefined;
+      if (msgId) {
+        if (msgId === lastMsgId) continue;
+        lastMsgId = msgId;
+      }
 
       const tsRaw = obj.timestamp;
       const ts = typeof tsRaw === 'string' ? Date.parse(tsRaw)

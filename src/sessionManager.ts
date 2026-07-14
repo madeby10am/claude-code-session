@@ -19,6 +19,7 @@ import {
 import {
   CLAUDE_PROJECTS_DIR,
   CLAUDE_SETTINGS_PATH,
+  encodeProjectPath,
   getMcpServers as getMcpServersImpl,
   getSkills as getSkillsImpl,
   SkillInfo,
@@ -57,11 +58,24 @@ export class SessionManager {
   private pruneId:    ReturnType<typeof setInterval> | null = null;
   private syncId:     ReturnType<typeof setInterval> | null = null;
   private globalEffort = '';
+  private readonly slugPrefixes: string[];
 
   constructor(
-    private readonly onUpdate: (sessions: Map<string, SessionState>) => void
+    private readonly onUpdate: (sessions: Map<string, SessionState>) => void,
+    workspaceRoots: string[] = []
   ) {
+    this.slugPrefixes = workspaceRoots.map(encodeProjectPath);
     this.init();
+  }
+
+  /**
+   * True when a project-log folder belongs to one of this window's workspace
+   * folders — an exact match or a subdirectory of one. A window with no
+   * folders open (empty window) shows everything.
+   */
+  private slugMatches(slug: string): boolean {
+    if (this.slugPrefixes.length === 0) { return true; }
+    return this.slugPrefixes.some(p => slug === p || slug.startsWith(p + '-'));
   }
 
   getSessions(): Map<string, SessionState> {
@@ -89,7 +103,7 @@ export class SessionManager {
   }
 
   getTokenActivity(hours = 24): TokenEvent[] {
-    return getRecentTokenEvents(hours);
+    return getRecentTokenEvents(hours, (slug) => this.slugMatches(slug));
   }
 
   getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {
@@ -150,6 +164,7 @@ export class SessionManager {
     try {
       const slugs = fs.readdirSync(CLAUDE_PROJECTS_DIR);
       for (const slug of slugs) {
+        if (!this.slugMatches(slug)) { continue; }
         const slugDir = path.join(CLAUDE_PROJECTS_DIR, slug);
         try {
           const stat = fs.statSync(slugDir);
@@ -229,8 +244,10 @@ export class SessionManager {
             headRaw = headBuf.toString('utf8');
           }
 
-          const tailStart = Math.max(0, size - TAIL_BYTES);
-          if (tailStart > headLen) {
+          // Tail starts no earlier than where the head ended, so small files
+          // are fully covered instead of losing everything past the head.
+          const tailStart = Math.max(headLen, size - TAIL_BYTES);
+          if (size > tailStart) {
             const tailLen = size - tailStart;
             const tailBuf = Buffer.alloc(tailLen);
             fs.readSync(fd, tailBuf, 0, tailLen, tailStart);
@@ -289,7 +306,7 @@ export class SessionManager {
     if (this.watchers.has(CLAUDE_PROJECTS_DIR)) { return; }
     try {
       const watcher = fs.watch(CLAUDE_PROJECTS_DIR, (event, filename) => {
-        if (!filename) { return; }
+        if (!filename || !this.slugMatches(filename)) { return; }
         const slugDir = path.join(CLAUDE_PROJECTS_DIR, filename);
         try {
           const stat = fs.statSync(slugDir);
@@ -362,7 +379,14 @@ export class SessionManager {
       const size = stat.size;
 
       if (size < entry.fileOffset) {
+        // File was rewritten from scratch — clear the accumulators so the
+        // full replay doesn't double-count.
         entry.fileOffset = 0;
+        entry.lastUsageMsgId = undefined;
+        const st = entry.state;
+        st.inputTokens = 0;  st.lastInputTokens = 0;
+        st.outputTokens = 0; st.lastOutputTokens = 0;
+        st.turnCount = 0;    st.toolUseCount = 0;
       }
 
       const readStart  = entry.fileOffset;

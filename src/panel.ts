@@ -14,6 +14,10 @@ export class Panel implements vscode.WebviewViewProvider {
   private disposables: vscode.Disposable[] = [];
   private context: vscode.ExtensionContext;
   private projectInfoTimer: ReturnType<typeof setTimeout> | null = null;
+  // gh repo view hits the network and execSync blocks the extension host —
+  // refresh it far less often than the local git commands.
+  private ghCache: { cwd: string; ts: number; json: string } | null = null;
+  private static readonly GH_CACHE_MS = 5 * 60 * 1000;
   private terminalMap = new Map<string, vscode.Terminal>();
   private lastUsage: UsageStats | null = null;
   private lastEnvData: EnvData | null = null;
@@ -335,8 +339,15 @@ export class Panel implements vscode.WebviewViewProvider {
       branchCount = branchOut ? branchOut.split('\n').length : 0;
       tagCount = parseInt(git('git tag -l | wc -l'), 10) || 0;
 
-      // GitHub API data via gh CLI
-      const ghJson = git('gh repo view --json isPrivate,stargazerCount,forkCount,pushedAt,createdAt,diskUsage,issues,pullRequests 2>/dev/null');
+      // GitHub API data via gh CLI (cached — see GH_CACHE_MS)
+      let ghJson: string;
+      if (this.ghCache && this.ghCache.cwd === cwd &&
+          Date.now() - this.ghCache.ts < Panel.GH_CACHE_MS) {
+        ghJson = this.ghCache.json;
+      } else {
+        ghJson = git('gh repo view --json isPrivate,stargazerCount,forkCount,pushedAt,createdAt,diskUsage,issues,pullRequests 2>/dev/null');
+        this.ghCache = { cwd, ts: Date.now(), json: ghJson };
+      }
       if (ghJson) {
         try {
           const gh = JSON.parse(ghJson);

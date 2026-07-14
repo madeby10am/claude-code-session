@@ -226,6 +226,52 @@ function applyEntry(
       }
     }
 
+    // Metadata and usage appear on every assistant line, not just end_turn —
+    // reading them here keeps tokens/context live during long tool loops.
+    // "<synthetic>" marks system-generated lines (e.g. error notices), not a real model.
+    const model = (message?.['model'] ?? obj['model']) as string | undefined;
+    if (model && model !== '<synthetic>' && model !== s.model) { s.model = model; changed = true; }
+
+    const version = obj['version'] as string | undefined;
+    if (version && version !== s.version) { s.version = version; changed = true; }
+
+    const branch = obj['gitBranch'] as string | undefined;
+    if (branch && branch !== s.gitBranch) { s.gitBranch = branch; changed = true; }
+
+    const cwd = obj['cwd'] as string | undefined;
+    if (cwd && cwd !== s.cwd) { s.cwd = cwd; changed = true; }
+
+    const usage = (message?.['usage'] ?? obj['usage']) as Record<string, unknown> | undefined;
+    const msgId = message?.['id'] as string | undefined;
+    if (usage && (!msgId || msgId !== entry.lastUsageMsgId)) {
+      const input       = (usage['input_tokens']                as number | undefined) ?? 0;
+      const output      = (usage['output_tokens']               as number | undefined) ?? 0;
+      const cacheCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
+      const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
+
+      // All-zero usage means a synthetic line, not a real API call — skip it
+      // so it doesn't reset the "last turn" numbers or the context bar.
+      if (input + output + cacheCreate + cacheRead > 0) {
+        entry.lastUsageMsgId = msgId;
+
+        const turnInput = input + cacheCreate + cacheRead;
+        s.inputTokens += turnInput;
+        s.lastInputTokens = turnInput;
+        s.outputTokens += output;
+        s.lastOutputTokens = output;
+
+        const speed = usage['speed'] as string | undefined;
+        if (speed) { s.speed = speed; }
+
+        const usageEffort = usage['reasoning_effort'] as string | undefined;
+        if (usageEffort) { s.effort = usageEffort; }
+
+        const limit = getContextLimit(s.model);
+        s.contextPct = Math.min(100, Math.round((turnInput / limit) * 100));
+        changed = true;
+      }
+    }
+
     if (stopReason === 'tool_use') {
       s.activity = 'tooling';
       s.lastSeen = Date.now();
@@ -254,44 +300,6 @@ function applyEntry(
       } else {
         s.needsInput = false;
       }
-
-      const model = (message?.['model'] ?? obj['model']) as string | undefined;
-      if (model) { s.model = model; }
-
-      const usage = (message?.['usage'] ?? obj['usage']) as Record<string, unknown> | undefined;
-      if (usage) {
-        const cacheCreate = (usage['cache_creation_input_tokens'] as number | undefined) ?? 0;
-        const cacheRead   = (usage['cache_read_input_tokens']     as number | undefined) ?? 0;
-
-        if (typeof usage['input_tokens'] === 'number') {
-          const turnInput = usage['input_tokens'] + cacheCreate + cacheRead;
-          s.inputTokens += turnInput;
-          s.lastInputTokens = turnInput;
-        }
-        if (typeof usage['output_tokens'] === 'number') {
-          s.outputTokens += usage['output_tokens'];
-          s.lastOutputTokens = usage['output_tokens'];
-        }
-        const speed = usage['speed'] as string | undefined;
-        if (speed) { s.speed = speed; }
-
-        const usageEffort = usage['reasoning_effort'] as string | undefined;
-        if (usageEffort) { s.effort = usageEffort; }
-
-        const latestInput = (usage['input_tokens'] as number | undefined) ?? 0;
-        const totalContext = latestInput + cacheCreate + cacheRead;
-        const limit = getContextLimit(s.model);
-        s.contextPct = Math.min(100, Math.round((totalContext / limit) * 100));
-      }
-
-      const version = obj['version'] as string | undefined;
-      if (version) { s.version = version; }
-
-      const branch = obj['gitBranch'] as string | undefined;
-      if (branch) { s.gitBranch = branch; }
-
-      const cwd = obj['cwd'] as string | undefined;
-      if (cwd) { s.cwd = cwd; }
     }
 
     return changed;

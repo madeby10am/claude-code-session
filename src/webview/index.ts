@@ -187,7 +187,11 @@ function renderSessions(sessions) {
     list.innerHTML = '';
     const d = document.createElement('div');
     d.className = 'empty-state'; d.id = 'empty-msg';
-    d.innerHTML = '<div class="empty-icon">&#x25CB;</div>No active Claude session';
+    const icon = document.createElement('div');
+    icon.className = 'empty-icon';
+    icon.textContent = '○';
+    d.appendChild(icon);
+    d.appendChild(document.createTextNode('No active Claude session in this project'));
     list.appendChild(d);
     return;
   }
