@@ -356,6 +356,9 @@ body::before {
   flex-shrink: 0;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  /* Only YOUR TURN is full strength; in-progress badges recede. filter (not opacity)
+     so the badgePulse keyframes can still animate opacity. */
+  filter: saturate(0.6) opacity(0.6);
 }
 .activity-dot {
   width: 6px; height: 6px;
@@ -367,7 +370,7 @@ body::before {
 .session-card[data-activity="user_sent"]  .activity-badge { --pulse-rgb: 236,72,153; background: linear-gradient(135deg, #ec4899, #d946ef); }
 .session-card[data-activity="thinking"]   .activity-badge { --pulse-rgb: 167,139,250; background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
 .session-card[data-activity="responding"] .activity-badge { --pulse-rgb: 16,185,129; background: linear-gradient(135deg, #10b981, #06b6d4); }
-.session-card[data-activity="sleeping"]   .activity-badge { background: linear-gradient(135deg, #4b5563, #374151); box-shadow: 0 0 6px rgba(75,85,99,0.2); color: #9ca3af; }
+.session-card[data-activity="sleeping"]   .activity-badge { background: linear-gradient(135deg, #4b5563, #374151); box-shadow: 0 0 6px rgba(75,85,99,0.2); color: #9ca3af; filter: none; }
 .session-card[data-activity="sleeping"]   .activity-dot { opacity: 0.4; }
 
 .session-card.focused[data-activity="tooling"] .activity-badge,
@@ -1190,7 +1193,7 @@ body::before {
   gap: 8px;
   width: 100%;
   margin-top: 10px;
-  padding: 11px 12px;
+  padding: 8px 12px;
   border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 7%, transparent);
