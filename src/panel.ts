@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { SessionState, UsageStats } from './sessionManager';
 import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
 import { TokenEvent } from './session/tokenActivity';
@@ -330,6 +330,12 @@ export class Panel implements vscode.WebviewViewProvider {
       catch { return ''; }
     };
 
+    // No shell: branch names are attacker-controlled (a cloned repo can name one `a;cmd`).
+    const gitArgs = (...args: string[]): string => {
+      try { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+      catch { return ''; }
+    };
+
     if (cwd) {
       gitBranch = git('git rev-parse --abbrev-ref HEAD');
       const remote = git('git remote get-url origin');
@@ -347,10 +353,11 @@ export class Panel implements vscode.WebviewViewProvider {
 
       // Recent activity: HEAD reflog (commits/merges/pulls) + the remote
       // branch's reflog, which is where pushes are recorded.
-      const fmt = "--date=unix --format='%gd%x09%gs'";
-      const lists = [parseReflog(git(`git reflog show HEAD -n 40 ${fmt}`), 'head')];
+      const reflog = (ref: string, n: string) =>
+        gitArgs('reflog', 'show', ref, '-n', n, '--date=unix', '--format=%gd%x09%gs');
+      const lists = [parseReflog(reflog('HEAD', '40'), 'head')];
       if (gitBranch && gitBranch !== 'HEAD') {
-        lists.push(parseReflog(git(`git reflog show refs/remotes/origin/${gitBranch} -n 20 ${fmt}`), 'remote'));
+        lists.push(parseReflog(reflog(`refs/remotes/origin/${gitBranch}`, '20'), 'remote'));
       }
       activity = mergeActivity(lists);
 
