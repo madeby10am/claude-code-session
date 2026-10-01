@@ -89,97 +89,81 @@ function modelLabel(model) {
 }
 
 // ─── Build session card ─────────────────────────────────────────────────────
-function buildCard(s) {
+// [short label for the card, full label for the tooltip]
+const MODE_LABELS = {
+  'default': ['Ask', 'Ask Before Edit'],
+  'plan': ['Plan', 'Plan Mode'],
+  'auto-edit': ['Auto edit', 'Auto Edit'],
+  'full-auto': ['Full auto', 'Full Auto'],
+  'bypassPermissions': ['YOLO', 'YOLO (bypass permissions)'],
+  'none': ['None', 'None'],
+};
+
+// "2:10 PM · 1h 12m" for today (duration ticks live), "Sep 30, 2:10 PM" otherwise
+function fmtStarted(ts) {
+  if (!ts) return '\u2014';
+  const d = new Date(ts);
+  if (d.toDateString() === new Date().toDateString()) {
+    return fmtTime(ts) + ' &middot; <span data-duration-start="' + ts + '">' + fmtDuration(ts) + '</span>';
+  }
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + fmtTime(ts);
+}
+
+// Every session gets this same compact card; `focused` only adds the highlight ring.
+function buildCard(s, focused) {
   const card = document.createElement('div');
-  card.className = 'session-card';
+  card.className = focused ? 'session-card focused' : 'session-card';
   card.dataset.sessionId = s.sessionId;
   card.dataset.activity = s.activity;
-  card.style.cursor = 'pointer';
+  card.tabIndex = 0;
   card.addEventListener('click', () => {
     vscodeApi.postMessage({ type: 'openSession', sessionId: s.sessionId });
   });
+  card.addEventListener('keydown', e => {
+    if (e.target === card && e.key === 'Enter') vscodeApi.postMessage({ type: 'openSession', sessionId: s.sessionId });
+  });
 
-  const label = ACTIVITY_LABELS[s.activity] || s.activity;
-  const isActive = ACTIVE_STATES.has(s.activity);
-  const model = modelLabel(s.model);
   const pct = s.contextPct > 0 ? s.contextPct : 0;
-  const level = ctxLevel(pct);
+  const name = esc(s.chatTitle || s.projectName || s.slug);
+  const [modeShort, modeFull] = MODE_LABELS[s.permissionMode] || [s.permissionMode || '\u2014', s.permissionMode || '\u2014'];
+  const label = ACTIVITY_LABELS[s.activity] || s.activity;
 
-  const displayName = s.chatTitle || s.projectName || s.slug;
-
-  const entryLabel = ENTRYPOINT_LABELS[s.entrypoint] || s.entrypoint || '\u2014';
-
-  // Map permission mode to friendly label
-  const MODE_LABELS = {
-    'default': 'Ask Before Edit',
-    'plan': 'Plan Mode',
-    'auto-edit': 'Auto Edit',
-    'full-auto': 'Full Auto',
-    'bypassPermissions': 'YOLO',
-    'none': 'None',
-  };
-  const modeLabel = MODE_LABELS[s.permissionMode] || s.permissionMode || '\u2014';
+  // Everything dropped from the card face lives in the hover tooltip.
+  card.title = [
+    s.currentFile && 'File: ' + s.currentFile,
+    'Source: ' + (ENTRYPOINT_LABELS[s.entrypoint] || s.entrypoint || '\u2014'),
+    'Turns: ' + (s.turnCount || '\u2014') + '  Tools: ' + (s.toolUseCount || '\u2014'),
+    'In: ' + fmtTokens(s.lastInputTokens) + ' / ' + fmtTokens(s.inputTokens),
+    'Out: ' + fmtTokens(s.lastOutputTokens) + ' / ' + fmtTokens(s.outputTokens),
+  ].filter(Boolean).join('\n');
 
   card.innerHTML = `
     <div class="card-top">
-      <span class="status-dot" data-status="${s.activity}" data-active="${isActive}"></span>
-      <span class="session-name" title="${displayName}">${displayName}</span>
-      <span class="model-chip">${model}</span>
+      <span class="status-dot" data-status="${s.activity}" data-active="${ACTIVE_STATES.has(s.activity)}"></span>
+      <span class="session-name">${name}</span>
       ${s.activity === 'idle'
         ? '<span class="your-turn-badge"><span class="your-turn-dot"></span>YOUR TURN</span>'
         : `<span class="activity-badge"><span class="activity-dot"></span>${label}</span>`
       }
     </div>
-    <div class="stats-grid">
-      <div class="stat-row">
-        <span class="stat-label">Model</span>
-        <span class="stat-value">${model}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">File</span>
-        <span class="stat-value" title="${s.currentFile || ''}">${s.currentFile || '\u2014'}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Mode</span>
-        <span class="stat-value">${modeLabel}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Source</span>
-        <span class="stat-value">${entryLabel}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Turns</span>
-        <span class="stat-value">${s.turnCount > 0 ? s.turnCount : '\u2014'}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Tools</span>
-        <span class="stat-value">${s.toolUseCount > 0 ? s.toolUseCount : '\u2014'}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">In</span>
-        <span class="stat-value">${fmtTokens(s.lastInputTokens)}<span class="stat-dim"> / ${fmtTokens(s.inputTokens)}</span></span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Out</span>
-        <span class="stat-value">${fmtTokens(s.lastOutputTokens)}<span class="stat-dim"> / ${fmtTokens(s.outputTokens)}</span></span>
-      </div>
-      <div class="context-bar-wrap">
-        <div class="context-bar-label">
-          <span class="stat-label">Context</span>
-          <span class="stat-value">${pct > 0 ? pct + '%' : '\u2014'}</span>
-        </div>
-        <div class="context-bar-track">
-          <div class="context-bar-fill" data-level="${level}" style="width:${pct}%"></div>
-        </div>
-      </div>
+    <div class="card-meta">
+      <span class="model-chip">${modelLabel(s.model)}</span>
+      <span class="card-mode" title="${modeFull}">${modeShort}</span>
+      <span class="card-started">${fmtStarted(s.startedAt)}</span>
     </div>
-    <div class="session-time">
-      <span class="session-time-item">Started ${fmtTime(s.startedAt)}</span>
-      <span class="session-time-item">&middot;</span>
-      <span class="session-time-item" data-duration-start="${s.startedAt}">${fmtDuration(s.startedAt)}</span>
-      <button class="card-refresh-btn" title="New session" onclick="event.stopPropagation();vscodeApi.postMessage({type:'newSession'});">+</button>
+    <button class="card-dismiss" title="Remove from list" aria-label="Remove session from list">\u00d7</button>
+    <div class="card-context" title="Context window used">
+      <div class="context-bar-track">
+        <div class="context-bar-fill" data-level="${ctxLevel(pct)}" style="width:${pct}%"></div>
+      </div>
+      <span class="card-context-pct">${pct > 0 ? pct + '%' : '\u2014'}</span>
     </div>
   `;
+
+  card.querySelector('.card-dismiss').addEventListener('click', e => {
+    e.stopPropagation();
+    vscodeApi.postMessage({ type: 'dismissSession', sessionId: s.sessionId });
+  });
 
   return card;
 }
@@ -195,7 +179,7 @@ function renderSessions(sessions) {
   const list = document.getElementById('session-list');
 
   // Sort by most recent first
-  const sorted = (sessions || [])
+  const sorted = _lastSessions
     .slice()
     .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
 
@@ -220,15 +204,19 @@ function renderSessions(sessions) {
   _renderedSessionId = shown.sessionId;
 
   list.innerHTML = '';
-  const card = buildCard(shown);
-  if (switched) card.classList.add('swap-in');
-  list.appendChild(card);
+  // Stable order (newest start first) so cards don't reshuffle as activity changes
+  const ordered = sorted.slice().sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0));
+  for (const s of ordered) {
+    const card = buildCard(s, s === shown);
+    if (switched && s === shown) card.classList.add('swap-in');
+    list.appendChild(card);
+  }
 
   // Re-apply cached usage data to the newly built card
   if (_lastUsage) updateUsageMeters(_lastUsage);
 
   // Update per-card animations
-  updateAllAnimations([shown]);
+  updateAllAnimations(sorted);
 
   // Always-visible "which session / which model" line in the sticky header
   const stickyEl = document.getElementById('sticky-session');

@@ -6,6 +6,7 @@ import { SessionState, UsageStats } from './sessionManager';
 import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
 import { TokenEvent } from './session/tokenActivity';
 import { matchSessionByTabLabel } from './session/tabMatch';
+import { Dismissed, visibleSessions, dismiss, forgetStale } from './session/dismissed';
 import { GitActivity, parseReflog, mergeActivity } from './session/gitActivity';
 
 export class Panel implements vscode.WebviewViewProvider {
@@ -25,9 +26,12 @@ export class Panel implements vscode.WebviewViewProvider {
   private lastEnvData: EnvData | null = null;
   private onReadyCallback: (() => void) | null = null;
   private focusedSessionId: string | undefined;
+  private dismissed: Dismissed = {};
+  private static readonly DISMISSED_KEY = 'dismissedSessions';
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
+    this.dismissed = forgetStale(context.workspaceState.get<Dismissed>(Panel.DISMISSED_KEY, {}));
   }
 
   static createProvider(context: vscode.ExtensionContext): Panel {
@@ -168,8 +172,11 @@ export class Panel implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage(`Copied ${msg.name} to clipboard`);
       }
     }
+    if (msg.type === 'dismissSession' && msg.sessionId) {
+      this.dismissSession(msg.sessionId);
+    }
     if (msg.type === 'openSession' && msg.sessionId) {
-      this.focusSession(msg.sessionId);
+      void this.focusSession(msg.sessionId);
     }
     if (msg.type === 'newSession') {
       vscode.commands.executeCommand('claude-vscode.editor.open').then(
@@ -183,28 +190,40 @@ export class Panel implements vscode.WebviewViewProvider {
     }
   }
 
-  private focusSession(sessionId: string): void {
-    // 1. Check terminalMap — if we previously opened a terminal for this session, focus it
+  private static isClaudeTab(tab: vscode.Tab): tab is vscode.Tab & { input: vscode.TabInputWebview } {
+    return tab.input instanceof vscode.TabInputWebview && tab.input.viewType.includes('claudeVSCodePanel');
+  }
+
+  private isTabFor(tab: vscode.Tab, sessionId: string): boolean {
+    return Panel.isClaudeTab(tab) && matchSessionByTabLabel(tab.label, this.sessions.values()) === sessionId;
+  }
+
+  // Bring an already-open Claude editor tab for this session to the front.
+  private async revealSessionTab(sessionId: string): Promise<boolean> {
+    const groupCmds = ['First', 'Second', 'Third', 'Fourth', 'Fifth', 'Sixth', 'Seventh', 'Eighth'];
+    for (const group of vscode.window.tabGroups.all) {
+      const index = group.tabs.findIndex(t => this.isTabFor(t, sessionId));
+      const cmd = groupCmds[group.viewColumn - 1];
+      if (index < 0 || !cmd) { continue; }
+      await vscode.commands.executeCommand(`workbench.action.focus${cmd}EditorGroup`);
+      await vscode.commands.executeCommand('workbench.action.openEditorAtIndex', index);
+      return true;
+    }
+    return false;
+  }
+
+  private async focusSession(sessionId: string): Promise<void> {
+    // 1. A terminal we opened earlier for this session
     const mapped = this.terminalMap.get(sessionId);
     if (mapped) {
       mapped.show();
       return;
     }
 
-    // 2. Scan open tabs for an existing Claude Code webview editor tab and focus it
-    for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
-        if (tab.input instanceof vscode.TabInputWebview) {
-          const vt = (tab.input as vscode.TabInputWebview).viewType;
-          if (vt.includes('claude') || vt.includes('Claude')) {
-            vscode.commands.executeCommand('workbench.action.focusEditorGroup').then(() => {}, () => {});
-            return;
-          }
-        }
-      }
-    }
+    // 2. An open Claude editor tab for this session
+    if (await this.revealSessionTab(sessionId)) { return; }
 
-    // 3. Scan open terminals for one whose name includes the sessionId prefix
+    // 3. A terminal whose name carries the sessionId prefix
     const prefix = sessionId.slice(0, 8);
     const existing = vscode.window.terminals.find(t => t.name.includes(prefix));
     if (existing) {
@@ -212,7 +231,13 @@ export class Panel implements vscode.WebviewViewProvider {
       return;
     }
 
-    // 4. Fallback — create a new terminal and resume the session
+    // 4. Not open anywhere: reopen in the Claude editor, falling back to a resumed terminal
+    if (this.sessions.get(sessionId)?.entrypoint === 'claude-vscode') {
+      try {
+        await vscode.commands.executeCommand('claude-vscode.primaryEditor.open', sessionId);
+        return;
+      } catch { /* extension missing or command changed: use the terminal */ }
+    }
     const terminal = vscode.window.createTerminal(`Claude: ${prefix}`);
     terminal.sendText(`claude --resume ${sessionId}`);
     terminal.show();
@@ -232,7 +257,10 @@ export class Panel implements vscode.WebviewViewProvider {
 
     // Clicking a different Claude tab jumps the sidebar to that session.
     this.disposables.push(
-      vscode.window.tabGroups.onDidChangeTabs(() => this.syncActiveTab()),
+      vscode.window.tabGroups.onDidChangeTabs(e => {
+        this.onTabsClosed(e.closed);
+        this.syncActiveTab();
+      }),
       vscode.window.tabGroups.onDidChangeTabGroups(() => this.syncActiveTab())
     );
 
@@ -252,12 +280,36 @@ export class Panel implements vscode.WebviewViewProvider {
   // Non-Claude tabs (files, etc.) leave the current selection alone.
   private syncActiveTab(force = false): void {
     const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
-    if (!tab || !(tab.input instanceof vscode.TabInputWebview) ||
-        !tab.input.viewType.includes('claudeVSCodePanel')) { return; }
-    const id = matchSessionByTabLabel(tab.label, this.sessions.values());
+    if (!tab || !Panel.isClaudeTab(tab)) { return; }
+    const id = matchSessionByTabLabel(tab.label, visibleSessions(this.sessions.values(), this.dismissed));
     if (!id || (!force && id === this.focusedSessionId)) { return; }
     this.focusedSessionId = id;
     this.postMessage({ type: 'focusSession', sessionId: id });
+  }
+
+  // Hide a session once its Claude editor tab is closed. The log file outlives the
+  // tab, so without this the session would linger in the list for up to an hour.
+  private onTabsClosed(closed: readonly vscode.Tab[]): void {
+    for (const tab of closed) {
+      if (!Panel.isClaudeTab(tab)) { continue; }
+      const id = matchSessionByTabLabel(tab.label, this.sessions.values());
+      if (!id) { continue; }
+      // A tab dragged to another group reports as closed then reopened: re-check shortly.
+      setTimeout(() => {
+        if (!this.hasOpenTab(id)) { this.dismissSession(id); }
+      }, 300);
+    }
+  }
+
+  private hasOpenTab(sessionId: string): boolean {
+    return vscode.window.tabGroups.all.some(g => g.tabs.some(t => this.isTabFor(t, sessionId)));
+  }
+
+  private dismissSession(sessionId: string): void {
+    this.dismissed = dismiss(forgetStale(this.dismissed), sessionId);
+    void this.context.workspaceState.update(Panel.DISMISSED_KEY, this.dismissed);
+    if (this.focusedSessionId === sessionId) { this.focusedSessionId = undefined; }
+    this.sendSessions(this.sessions);
   }
 
   private postMessage(msg: ExtensionToWebview): void {
@@ -269,7 +321,7 @@ export class Panel implements vscode.WebviewViewProvider {
     this.sessions = sessions;
     this.postMessage({
       type: 'sessionsUpdate',
-      sessions: Array.from(sessions.values()),
+      sessions: visibleSessions(sessions.values(), this.dismissed),
     });
     // A tab's chat title may only appear in the log after the tab opens.
     this.syncActiveTab();

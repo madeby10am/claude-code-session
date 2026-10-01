@@ -49,4 +49,5 @@ export type WebviewToExtension =
   | { type: 'openFolder';  path: string }
   | { type: 'inputSkill';  name: string }
   | { type: 'openSession'; sessionId: string }
+  | { type: 'dismissSession'; sessionId: string }
   | { type: 'newSession' };

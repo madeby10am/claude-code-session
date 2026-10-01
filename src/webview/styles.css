@@ -204,76 +204,81 @@ body::before {
   padding: 0 14px 14px 12px;
 }
 
-/* ===== Active Sessions (hero) ===== */
+/* ===== Sessions: one compact card per session ===== */
 .session-card {
   position: relative;
   isolation: isolate;
-  border: none;
-  border-radius: 10px;
-  padding: 14px 16px 10px;
-  margin-bottom: 8px;
-  background: transparent;
-  transition: box-shadow 1s ease;
-}
-.session-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  z-index: 0;
-  background: transparent;
-  opacity: 0;
-  transition: opacity 0.5s ease, background 1s ease;
-}
-.session-card::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
+  border: 1px solid var(--border);
   border-radius: 8px;
+  padding: 7px 10px 8px;
+  margin-top: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 1s ease;
+}
+.session-card:first-child { margin-top: 0; }
+.session-card:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+.session-card:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+.session-card > * { position: relative; z-index: 1; }
+
+/* The session you're in: activity-coloured ring and a soft pulsing glow */
+.session-card.focused { border-color: transparent; background: transparent; }
+.session-card.focused::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 8px;
+  z-index: 0;
+  background: var(--accent);
+  transition: background 1s ease;
+}
+.session-card.focused::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 6px;
   background: var(--bg);
   z-index: 0;
-  transition: background 0.3s;
 }
-.session-card > * { position: relative; z-index: 1; }
-.session-card:last-child { margin-bottom: 0; }
-.session-card:hover::after { background: var(--bg); }
+.session-card.focused[data-activity="tooling"]::before    { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+.session-card.focused[data-activity="user_sent"]::before  { background: linear-gradient(135deg, #ec4899, #d946ef); }
+.session-card.focused[data-activity="thinking"]::before   { background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.session-card.focused[data-activity="responding"]::before { background: linear-gradient(135deg, #10b981, #06b6d4); }
+.session-card.focused[data-activity="idle"]::before       { background: linear-gradient(135deg, #f59e0b, #ef4444); }
+.session-card.focused[data-activity="sleeping"]::before   { background: linear-gradient(135deg, #4b5563, #374151); }
 
-/* Activity glow — solid gradient ring matching badge colors */
-.session-card[data-activity="tooling"]::before    { opacity: 1; background: linear-gradient(135deg, #3b82f6, #6366f1); }
-.session-card[data-activity="user_sent"]::before  { opacity: 1; background: linear-gradient(135deg, #f59e0b, #f97316); }
-.session-card[data-activity="thinking"]::before   { opacity: 1; background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
-.session-card[data-activity="responding"]::before { opacity: 1; background: linear-gradient(135deg, #10b981, #06b6d4); }
-.session-card[data-activity="idle"]::before       { opacity: 1; background: linear-gradient(135deg, #f59e0b, #ef4444); }
-.session-card[data-activity="sleeping"]::before   { opacity: 1; background: linear-gradient(135deg, #4b5563, #374151); }
-
-/* Outer glow — pulsing */
-.session-card[data-activity="tooling"]    { animation: glowTooling 2s ease-in-out infinite; }
-.session-card[data-activity="user_sent"]  { animation: glowUserSent 2s ease-in-out infinite; }
-.session-card[data-activity="thinking"]   { animation: glowThinking 2s ease-in-out infinite; }
-.session-card[data-activity="responding"] { animation: glowResponding 2s ease-in-out infinite; }
-.session-card[data-activity="idle"]       { animation: glowIdle 2s ease-in-out infinite; }
-.session-card[data-activity="sleeping"]   { animation: glowSleeping 3s ease-in-out infinite; }
+.session-card.focused[data-activity="tooling"]    { animation: glowTooling 2s ease-in-out infinite; }
+.session-card.focused[data-activity="user_sent"]  { animation: glowUserSent 2s ease-in-out infinite; }
+.session-card.focused[data-activity="thinking"]   { animation: glowThinking 2s ease-in-out infinite; }
+.session-card.focused[data-activity="responding"] { animation: glowResponding 2s ease-in-out infinite; }
+.session-card.focused[data-activity="idle"]       { animation: glowIdle 2s ease-in-out infinite; }
+.session-card.focused[data-activity="sleeping"]   { animation: glowSleeping 3s ease-in-out infinite; }
 
 @keyframes glowTooling {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(59,130,246,0.3), 0 0 40px -5px rgba(99,102,241,0.15); }
 }
+
 @keyframes glowUserSent {
   0%, 100% { box-shadow: none; }
-  50% { box-shadow: 0 0 20px -2px rgba(245,158,11,0.3), 0 0 40px -5px rgba(249,115,22,0.15); }
+  50% { box-shadow: 0 0 20px -2px rgba(236,72,153,0.3), 0 0 40px -5px rgba(217,70,239,0.15); }
 }
+
 @keyframes glowThinking {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(167,139,250,0.3), 0 0 40px -5px rgba(139,92,246,0.15); }
 }
+
 @keyframes glowResponding {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(16,185,129,0.3), 0 0 40px -5px rgba(6,182,212,0.15); }
 }
+
 @keyframes glowIdle {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(245,158,11,0.3), 0 0 40px -5px rgba(239,68,68,0.15); }
 }
+
 @keyframes glowSleeping {
   0%, 100% { box-shadow: none; }
   50% { box-shadow: 0 0 20px -2px rgba(75,85,99,0.25), 0 0 40px -5px rgba(55,65,81,0.12); }
@@ -283,8 +288,20 @@ body::before {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
 }
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+.card-mode { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-started { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--fs-2xs); }
+.card-context { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.card-context .context-bar-track { flex: 1; width: auto; height: 4px; }
+.card-context-pct { flex-shrink: 0; min-width: 28px; text-align: right; font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text-dim); }
 
 /* Animated status dot */
 .status-dot {
@@ -310,7 +327,7 @@ body::before {
   animation: pulse 2s ease-in-out infinite;
 }
 .status-dot[data-status="tooling"]    { background: var(--blue); }
-.status-dot[data-status="user_sent"]  { background: var(--amber); }
+.status-dot[data-status="user_sent"]  { background: #ec4899; }
 .status-dot[data-status="thinking"]   { background: var(--purple); }
 .status-dot[data-status="responding"] { background: var(--green); }
 .status-dot[data-status="sleeping"]   { background: var(--text-muted); }
@@ -347,24 +364,24 @@ body::before {
   background: #fff;
   opacity: 0.9;
 }
-.session-card[data-activity="tooling"]    .activity-badge { --pulse-rgb: 59,130,246; background: linear-gradient(135deg, #3b82f6, #6366f1); animation: badgePulse 1.6s ease-in-out infinite; }
-.session-card[data-activity="user_sent"]  .activity-badge { --pulse-rgb: 245,158,11; background: linear-gradient(135deg, #f59e0b, #f97316); animation: badgePulse 1.6s ease-in-out infinite; }
-.session-card[data-activity="thinking"]   .activity-badge { --pulse-rgb: 167,139,250; background: linear-gradient(135deg, #a78bfa, #8b5cf6); animation: badgePulse 1.6s ease-in-out infinite; }
-.session-card[data-activity="responding"] .activity-badge { --pulse-rgb: 16,185,129; background: linear-gradient(135deg, #10b981, #06b6d4); animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card[data-activity="tooling"]    .activity-badge { --pulse-rgb: 59,130,246; background: linear-gradient(135deg, #3b82f6, #6366f1); }
+.session-card[data-activity="user_sent"]  .activity-badge { --pulse-rgb: 236,72,153; background: linear-gradient(135deg, #ec4899, #d946ef); }
+.session-card[data-activity="thinking"]   .activity-badge { --pulse-rgb: 167,139,250; background: linear-gradient(135deg, #a78bfa, #8b5cf6); }
+.session-card[data-activity="responding"] .activity-badge { --pulse-rgb: 16,185,129; background: linear-gradient(135deg, #10b981, #06b6d4); }
 .session-card[data-activity="sleeping"]   .activity-badge { background: linear-gradient(135deg, #4b5563, #374151); box-shadow: 0 0 6px rgba(75,85,99,0.2); color: #9ca3af; }
 .session-card[data-activity="sleeping"]   .activity-dot { opacity: 0.4; }
+
+.session-card.focused[data-activity="tooling"] .activity-badge,
+.session-card.focused[data-activity="user_sent"] .activity-badge,
+.session-card.focused[data-activity="thinking"] .activity-badge,
+.session-card.focused[data-activity="responding"] .activity-badge { animation: badgePulse 1.6s ease-in-out infinite; }
+.session-card:not(.focused) .your-turn-badge { animation: none; }
 
 @keyframes badgePulse {
   0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px rgba(var(--pulse-rgb),0.35); }
   50% { opacity: 0.85; transform: scale(0.97); box-shadow: 0 0 16px rgba(var(--pulse-rgb),0.5); }
 }
 
-/* Stats grid inside card */
-.stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 5px 16px;
-}
 .stat-row {
   display: flex;
   justify-content: flex-start;
@@ -415,15 +432,6 @@ body::before {
 }
 
 /* Context bar */
-.context-bar-wrap {
-  grid-column: 1 / -1;
-  margin-top: 4px;
-}
-.context-bar-label {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 3px;
-}
 .context-bar-track {
   width: 100%;
   height: 5px;
@@ -980,7 +988,6 @@ body::before {
   .section-header { padding: 8px 12px 6px; }
   .section-body { padding: 0 12px 10px; }
   .session-card { padding: 10px 12px 8px; }
-  .stats-grid { grid-template-columns: 1fr; gap: 4px; }
   .stat-label { font-size: var(--fs-2xs); }
   .stat-value { font-size: var(--fs-xs); }
   .activity-badge { display: none; }
@@ -992,13 +999,12 @@ body::before {
   .header-git-item, .header-git-sep { display: none; }
   .section-body { padding: 0 14px 10px; }
   .session-card { padding: 12px 14px 8px; }
-  .stats-grid { gap: 4px 10px; }
   .stat-label { font-size: var(--fs-2xs); letter-spacing: 0.02em; }
   .stat-value { font-size: var(--fs-xs); }
   .speech-bubble { padding: 4px 8px; font-size: var(--fs-xs); }
 }
 @media (max-width: 180px) {
-  .stats-grid { display: none; }
+  .card-meta { display: none; }
   .session-name { font-size: var(--fs-sm); }
 }
 
@@ -1049,14 +1055,11 @@ body::before {
 }
 /* Animate the contents, not the card, so the activity glow animation keeps running */
 .session-card.swap-in > * { animation: sessionSwapIn 0.24s var(--ease-out) both; }
-.session-card { transition: box-shadow 1s ease, transform 0.2s var(--ease-out); }
-.session-card:hover { transform: translateY(-1px); }
 .section-header { transition: color 0.15s, background 0.15s; }
 .robot-bar-text { transition: opacity 0.2s var(--ease-out); }
 
 @media (prefers-reduced-motion: reduce) {
   .session-card.swap-in > * { animation: none; }
-  .session-card:hover { transform: none; }
 }
 
 
@@ -1162,3 +1165,50 @@ body::before {
 @media (prefers-reduced-motion: reduce) {
   .git-activity.live .git-activity-dot, .git-history { animation: none; }
 }
+
+
+
+
+/* ===== Sessions header: new-session action ===== */
+.section-action {
+  margin-left: auto;
+  padding: 1px 7px;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.15s, background 0.15s;
+}
+.section-action:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
+.section-action ~ .section-chevron { margin-left: 0; }
+
+
+/* ===== Card dismiss: corner button, shown on hover/focus ===== */
+.session-card > .card-dismiss {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  width: 16px; height: 16px;
+  padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-hover);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-dim);
+  font: inherit; font-size: var(--fs-md); line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s, transform 0.2s var(--ease-out), color 0.15s, border-color 0.15s;
+}
+.session-card:hover > .card-dismiss,
+.session-card:focus-within > .card-dismiss { opacity: 1; transform: scale(1); }
+.session-card > .card-dismiss:hover { color: var(--red); border-color: var(--red); }
+@media (prefers-reduced-motion: reduce) { .session-card > .card-dismiss { transition: none; } }
