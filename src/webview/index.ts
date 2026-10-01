@@ -79,6 +79,15 @@ function fmtAgo(ts) {
   return days + 'd ago';
 }
 
+// "claude-sonnet-5-5-20260101" -> "Sonnet 5.5", "claude-fable-5" -> "Fable 5"
+function modelLabel(model) {
+  if (!model) return '\u2014';
+  const m = model.replace(/^claude-/, '').replace(/-\d{8}$/, '').match(/^([a-z]+)(?:-(\d+)(?:-(\d+))?)?/i);
+  if (!m) return model;
+  const name = m[1].charAt(0).toUpperCase() + m[1].slice(1);
+  return m[2] ? name + ' ' + m[2] + (m[3] ? '.' + m[3] : '') : name;
+}
+
 // ─── Build session card ─────────────────────────────────────────────────────
 function buildCard(s) {
   const card = document.createElement('div');
@@ -92,7 +101,7 @@ function buildCard(s) {
 
   const label = ACTIVITY_LABELS[s.activity] || s.activity;
   const isActive = ACTIVE_STATES.has(s.activity);
-  const model = s.model ? s.model.replace('claude-', '').replace(/-(\d+)-(\d+).*/, ' $1.$2').replace(/(\w)/, c => c.toUpperCase()) : '\u2014';
+  const model = modelLabel(s.model);
   const pct = s.contextPct > 0 ? s.contextPct : 0;
   const level = ctxLevel(pct);
 
@@ -114,7 +123,8 @@ function buildCard(s) {
   card.innerHTML = `
     <div class="card-top">
       <span class="status-dot" data-status="${s.activity}" data-active="${isActive}"></span>
-      <span class="session-name">${displayName}</span>
+      <span class="session-name" title="${displayName}">${displayName}</span>
+      <span class="model-chip">${model}</span>
       ${s.activity === 'idle'
         ? '<span class="your-turn-badge"><span class="your-turn-dot"></span>YOUR TURN</span>'
         : `<span class="activity-badge"><span class="activity-dot"></span>${label}</span>`
@@ -175,7 +185,13 @@ function buildCard(s) {
 }
 
 // ─── Render sessions ────────────────────────────────────────────────────────
+// The session the user last switched to via an editor tab; null = follow most recent.
+let _pinnedSessionId: string | null = null;
+let _lastSessions: any[] = [];
+let _renderedSessionId: string | null = null;
+
 function renderSessions(sessions) {
+  _lastSessions = sessions || [];
   const list = document.getElementById('session-list');
 
   // Sort by most recent first
@@ -184,6 +200,8 @@ function renderSessions(sessions) {
     .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
 
   if (sorted.length === 0) {
+    const st = document.getElementById('sticky-session');
+    if (st) st.hidden = true;
     list.innerHTML = '';
     const d = document.createElement('div');
     d.className = 'empty-state'; d.id = 'empty-msg';
@@ -196,44 +214,117 @@ function renderSessions(sessions) {
     return;
   }
 
-  // Only show the current (most recent) session
-  const current = [sorted[0]];
+  // Show the session picked via its editor tab, else the most recent one
+  const shown = sorted.find(s => s.sessionId === _pinnedSessionId) || sorted[0];
+  const switched = _renderedSessionId !== null && _renderedSessionId !== shown.sessionId;
+  _renderedSessionId = shown.sessionId;
 
   list.innerHTML = '';
-  for (const s of current) {
-    list.appendChild(buildCard(s));
-  }
+  const card = buildCard(shown);
+  if (switched) card.classList.add('swap-in');
+  list.appendChild(card);
 
   // Re-apply cached usage data to the newly built card
   if (_lastUsage) updateUsageMeters(_lastUsage);
 
   // Update per-card animations
-  updateAllAnimations(current);
+  updateAllAnimations([shown]);
+
+  // Always-visible "which session / which model" line in the sticky header
+  const stickyEl = document.getElementById('sticky-session');
+  if (stickyEl) {
+    stickyEl.hidden = false;
+    document.getElementById('sticky-session-name').textContent = shown.chatTitle || shown.projectName || shown.slug || '';
+    document.getElementById('sticky-session-model').textContent = modelLabel(shown.model);
+  }
+  _focusedForTokens = shown.sessionId;
+  if (_tokenScope === 'session') renderTokenActivity();
 
   // Update robot status bar
-  if (sorted.length > 0) {
-    const s = sorted[0];
-    const txt = document.getElementById('robot-bar-text');
-    const isWorking = ACTIVE_STATES.has(s.activity);
-    if (txt) {
-      const showAction = isWorking && s.activity !== 'thinking' && s.lastAction;
-      const raw = showAction ? s.lastAction : (ACTIVITY_LABELS[s.activity] || 'Idle');
-      const spaceIdx = raw.indexOf(' ');
-      if (spaceIdx > 0 && isWorking) {
-        const verb = raw.slice(0, spaceIdx);
-        const target = raw.slice(spaceIdx + 1);
-        txt.innerHTML = verb + ' <span class="action-target">' + target.replace(/</g, '&lt;') + '</span>';
-      } else {
-        txt.textContent = raw;
-      }
-    }
-    // Drive robot bar animation
-    const newAnim = pickAnim(s.activity, s.lastAction);
-    if (!_animStates['__bar'] || _animStates['__bar'].anim !== newAnim) {
-      _animStates['__bar'] = { anim: newAnim, frame: 0 };
+  const txt = document.getElementById('robot-bar-text');
+  const isWorking = ACTIVE_STATES.has(shown.activity);
+  if (txt) {
+    const showAction = isWorking && shown.activity !== 'thinking' && shown.lastAction;
+    const raw = showAction ? shown.lastAction : (ACTIVITY_LABELS[shown.activity] || 'Idle');
+    const spaceIdx = raw.indexOf(' ');
+    if (spaceIdx > 0 && isWorking) {
+      const verb = raw.slice(0, spaceIdx);
+      const target = raw.slice(spaceIdx + 1);
+      txt.innerHTML = verb + ' <span class="action-target">' + target.replace(/</g, '&lt;') + '</span>';
+    } else {
+      txt.textContent = raw;
     }
   }
+  // Drive robot bar animation
+  const newAnim = pickAnim(shown.activity, shown.lastAction);
+  if (!_animStates['__bar'] || _animStates['__bar'].anim !== newAnim) {
+    _animStates['__bar'] = { anim: newAnim, frame: 0 };
+  }
 }
+
+// ─── Git activity ───────────────────────────────────────────────────────────
+const ACTIVITY_VERBS = {
+  pushed: 'Pushed', pulled: 'Pulled', merged: 'Merged',
+  committed: 'Committed', fetched: 'Fetched', rebased: 'Rebased',
+};
+const ACTIVITY_LIVE_MS = 60_000;
+let _gitActivity = [];
+
+function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+function renderGitActivity(activity) {
+  _gitActivity = activity;
+  const box = document.getElementById('git-activity');
+  const text = document.getElementById('git-activity-text');
+  const ago = document.getElementById('git-activity-ago');
+  const hist = document.getElementById('git-history');
+  if (!box || !text || !ago) return;
+
+  // Headline: the latest push or pull if there is one, otherwise the latest event.
+  const last = activity.find(e => e.kind === 'pushed' || e.kind === 'pulled') || activity[0];
+  if (last) {
+    box.dataset.kind = last.kind;
+    text.textContent = ACTIVITY_VERBS[last.kind];
+    ago.dataset.agoTs = String(last.ts);
+  } else {
+    box.dataset.kind = 'none';
+    text.textContent = 'No recent activity';
+    delete ago.dataset.agoTs;
+    ago.textContent = '';
+  }
+  tickAgo();
+
+  if (hist) {
+    hist.innerHTML = activity.length
+      ? activity.map(e =>
+          '<div class="git-history-row" data-kind="' + e.kind + '"><span class="git-activity-dot"></span>'
+          + '<span class="git-history-verb">' + ACTIVITY_VERBS[e.kind] + '</span>'
+          + '<span class="git-history-label" title="' + esc(e.label) + '">' + esc(e.label) + '</span>'
+          + '<span class="git-history-ago" data-ago-ts="' + e.ts + '">' + fmtAgo(e.ts) + '</span></div>'
+        ).join('')
+      : '<div class="cap-item" style="color:var(--text-muted);">No activity yet</div>';
+  }
+}
+
+// Keep "3m ago" fresh and flag anything under a minute old as live.
+function tickAgo() {
+  document.querySelectorAll('[data-ago-ts]').forEach(el => {
+    const ts = parseInt((el as HTMLElement).dataset.agoTs, 10);
+    if (ts) el.textContent = fmtAgo(ts);
+  });
+  const box = document.getElementById('git-activity');
+  const ts = parseInt(document.getElementById('git-activity-ago')?.dataset.agoTs || '', 10);
+  if (box) box.classList.toggle('live', !!ts && Date.now() - ts < ACTIVITY_LIVE_MS);
+}
+setInterval(tickAgo, 5000);
+
+document.getElementById('git-history-toggle')?.addEventListener('click', e => {
+  const btn = e.currentTarget as HTMLElement;
+  const hist = document.getElementById('git-history');
+  const open = btn.getAttribute('aria-expanded') !== 'true';
+  btn.setAttribute('aria-expanded', String(open));
+  if (hist) hist.hidden = !open;
+});
 
 // ─── Message handling ───────────────────────────────────────────────────────
 window.addEventListener('message', e => {
@@ -241,6 +332,11 @@ window.addEventListener('message', e => {
 
   if (msg.type === 'sessionsUpdate') {
     renderSessions(msg.sessions);
+  }
+
+  if (msg.type === 'focusSession') {
+    _pinnedSessionId = msg.sessionId;
+    renderSessions(_lastSessions);
   }
 
   if (msg.type === 'projectInfo') {
@@ -258,39 +354,23 @@ window.addEventListener('message', e => {
     const gr = document.getElementById('git-repo');
     if (gr) {
       if (d.gitRemote) {
-        gr.innerHTML = '<a class="link" onclick="vscodeApi.postMessage({type:\'openUrl\',url:\'https://github.com/' + d.gitRemote + '\'})">' + d.gitRemote + '</a>';
+        const vis = d.isPrivate === true ? 'private' : d.isPrivate === false ? 'public' : '';
+        gr.innerHTML = '<a class="link" title="Open on GitHub" onclick="vscodeApi.postMessage({type:\'openUrl\',url:\'https://github.com/' + d.gitRemote + '\'})">' + d.gitRemote + ' \u2197</a>'
+          + (vis ? ' <span class="vis-chip">' + vis + '</span>' : '');
       } else {
         gr.textContent = '\u2014';
       }
     }
     const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-    const fmtDate = (iso) => {
-      if (!iso) return '\u2014';
-      const dt = new Date(iso);
-      return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) + ' ' + dt.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-    };
-
     setEl('git-branch2', d.gitBranch || '\u2014');
     setEl('git-uncommitted', d.uncommittedCount > 0 ? d.uncommittedCount + ' uncommitted' : 'Clean');
-    setEl('git-ahead-behind', '\u2191' + (d.ahead || 0) + ' \u2193' + (d.behind || 0));
+    setEl('git-ahead-behind', (d.ahead || d.behind) ? '\u2191' + (d.ahead || 0) + ' \u2193' + (d.behind || 0) : '');
     const glc = document.getElementById('git-last-commit');
     if (glc) { glc.textContent = d.gitLastCommit || '\u2014'; glc.title = d.gitLastCommit || ''; }
-    setEl('git-last-commit-date', fmtDate(d.lastCommitDate));
-    setEl('git-total-commits', d.totalCommits > 0 ? String(d.totalCommits) : '\u2014');
-    setEl('git-contributors', d.contributors > 0 ? String(d.contributors) : '\u2014');
-    setEl('git-branch-count', d.branchCount > 0 ? String(d.branchCount) : '\u2014');
-    setEl('git-tags', d.tagCount > 0 ? String(d.tagCount) : '0');
-    setEl('git-stashes', d.stashCount > 0 ? String(d.stashCount) : '0');
-
-    // GitHub API fields
-    setEl('git-visibility', d.isPrivate === true ? 'Private' : d.isPrivate === false ? 'Public' : '\u2014');
-    setEl('git-stars', d.stars != null ? String(d.stars) : '\u2014');
-    setEl('git-forks', d.forks != null ? String(d.forks) : '\u2014');
     setEl('git-issues', d.openIssues != null ? String(d.openIssues) : '\u2014');
     setEl('git-prs', d.openPRs != null ? String(d.openPRs) : '\u2014');
-    setEl('git-last-pushed', fmtDate(d.lastPushed));
-    setEl('git-created', fmtDate(d.repoCreated));
-    setEl('git-size', d.diskUsage || '\u2014');
+    setEl('git-stashes', String(d.stashCount || 0));
+    renderGitActivity(d.activity || []);
   }
 
   if (msg.type === 'envData') {
@@ -304,7 +384,7 @@ window.addEventListener('message', e => {
           '<div class="cap-item"><span class="cap-dot" data-status="detected"></span><a class="link" onclick="vscodeApi.postMessage({type:\'openFile\',file:\'' + f + '\'})">' + f + '</a></div>'
         ).join('');
       } else {
-        rfList.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No files yet</div>';
+        rfList.innerHTML = '<div class="cap-item" style="color:var(--text-muted);">No files yet</div>';
       }
     }
 
@@ -316,7 +396,7 @@ window.addEventListener('message', e => {
           '<div class="cap-item"><span class="cap-dot" data-status="connected"></span><span>' + s + '</span></div>'
         ).join('');
       } else {
-        mcpList.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">None configured</div>';
+        mcpList.innerHTML = '<div class="cap-item" style="color:var(--text-muted);">None configured</div>';
       }
     }
 
@@ -335,10 +415,10 @@ window.addEventListener('message', e => {
           const ago = fmtAgo(s.lastSeen);
           const dot = ACTIVE_STATES.has(s.activity) ? 'connected' : (s.activity === 'sleeping' ? 'no' : 'detected');
           const title = s.title.length > 28 ? s.title.slice(0, 28) + '\u2026' : s.title;
-          return '<div class="cap-item" style="justify-content:space-between;"><span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="cap-dot" data-status="' + dot + '"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + title + '</span></span><span style="color:#a0a0a0;font-size:10px;flex-shrink:0;">' + ago + '</span></div>';
+          return '<div class="cap-item" style="justify-content:space-between;"><span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="cap-dot" data-status="' + dot + '"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + title + '</span></span><span style="color:var(--text-muted);font-size:var(--fs-xs);flex-shrink:0;">' + ago + '</span></div>';
         }).join('');
       } else {
-        shList.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No sessions</div>';
+        shList.innerHTML = '<div class="cap-item" style="color:var(--text-muted);">No sessions</div>';
       }
     }
   }
@@ -488,6 +568,8 @@ function updateTimeMarkers(usage) {
 let _lastTokenEvents = [];
 const TOKEN_WINDOW_DEFAULT = 5;
 let _tokenWindowHours = TOKEN_WINDOW_DEFAULT;
+let _tokenScope: 'all' | 'session' = 'all';
+let _focusedForTokens: string | null = null;
 
 function fmtTokensShort(n) {
   if (!n || n <= 0) return '0';
@@ -552,7 +634,8 @@ function renderTokenActivity(events) {
 
   const now  = Date.now();
   const tMin = now - _tokenWindowHours * 60 * 60 * 1000;
-  const visible = _lastTokenEvents.filter(e => e.ts >= tMin);
+  const visible = _lastTokenEvents.filter(e =>
+    e.ts >= tMin && (_tokenScope === 'all' || e.sessionId === _focusedForTokens));
 
   // Always draw the canvas so the baseline stays visible even during idle
   // stretches. The "no messages" message only shows as extra context below.
@@ -736,7 +819,29 @@ function renderTokenActivity(events) {
   if (totalEl) {
     totalEl.textContent = fmtTokensShort(totalTokens) + ' tokens \u00b7 ' + visible.length + ' msgs';
   }
+
+  // Pace line: average burn over the window and the busiest slice.
+  const statsEl = document.getElementById('token-activity-stats');
+  if (statsEl) {
+    if (totalTokens > 0) {
+      const perMin = totalTokens / (_tokenWindowHours * 60);
+      const peakIdx = buckets.indexOf(maxBucket);
+      const peakAt = fmtTime(tMin + (peakIdx + 0.5) * bucketMs);
+      statsEl.textContent = 'avg ' + fmtTokensShort(perMin) + '/min \u00b7 peak ' + fmtTokensShort(maxBucket) + ' at ' + peakAt;
+    } else {
+      statsEl.textContent = '';
+    }
+  }
 }
+
+document.querySelectorAll('.token-scope-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    _tokenScope = (btn as HTMLElement).dataset.scope === 'session' ? 'session' : 'all';
+    document.querySelectorAll('.token-scope-btn').forEach(b =>
+      b.setAttribute('aria-pressed', String(b === btn)));
+    renderTokenActivity();
+  });
+});
 
 window.addEventListener('resize', () => {
   if (_lastTokenEvents.length > 0) renderTokenActivity();
@@ -1031,7 +1136,7 @@ function renderSkills() {
   });
 
   if (filtered.length === 0) {
-    list.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No skills match</div>';
+    list.innerHTML = '<div class="cap-item" style="color:var(--text-muted);">No skills match</div>';
     return;
   }
 
@@ -1062,7 +1167,7 @@ function renderClis(clis) {
   const list = document.getElementById('cli-list');
   if (!list) return;
   if (!clis || clis.length === 0) {
-    list.innerHTML = '<div class="cap-item" style="color:#a0a0a0;">No CLIs detected</div>';
+    list.innerHTML = '<div class="cap-item" style="color:var(--text-muted);">No CLIs detected</div>';
     return;
   }
 

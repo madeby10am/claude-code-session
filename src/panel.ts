@@ -5,6 +5,8 @@ import { execSync } from 'child_process';
 import { SessionState, UsageStats } from './sessionManager';
 import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
 import { TokenEvent } from './session/tokenActivity';
+import { matchSessionByTabLabel } from './session/tabMatch';
+import { GitActivity, parseReflog, mergeActivity } from './session/gitActivity';
 
 export class Panel implements vscode.WebviewViewProvider {
   private static instance: Panel | undefined;
@@ -22,6 +24,7 @@ export class Panel implements vscode.WebviewViewProvider {
   private lastUsage: UsageStats | null = null;
   private lastEnvData: EnvData | null = null;
   private onReadyCallback: (() => void) | null = null;
+  private focusedSessionId: string | undefined;
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -100,6 +103,7 @@ export class Panel implements vscode.WebviewViewProvider {
   private handleWebviewMessage(msg: WebviewToExtension): void {
     if (msg.type === 'ready') {
       this.sendSessions(this.sessions);
+      this.syncActiveTab(true);
       this.sendProjectInfo();
       if (this.lastEnvData) {
         this.postMessage({ type: 'envData', data: this.lastEnvData });
@@ -226,6 +230,12 @@ export class Panel implements vscode.WebviewViewProvider {
       })
     );
 
+    // Clicking a different Claude tab jumps the sidebar to that session.
+    this.disposables.push(
+      vscode.window.tabGroups.onDidChangeTabs(() => this.syncActiveTab()),
+      vscode.window.tabGroups.onDidChangeTabGroups(() => this.syncActiveTab())
+    );
+
     this.disposables.push(
       vscode.window.onDidCloseTerminal((closed) => {
         for (const [sessionId, terminal] of this.terminalMap) {
@@ -236,6 +246,18 @@ export class Panel implements vscode.WebviewViewProvider {
         }
       })
     );
+  }
+
+  // Resolve the active editor tab to a session and tell the webview.
+  // Non-Claude tabs (files, etc.) leave the current selection alone.
+  private syncActiveTab(force = false): void {
+    const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+    if (!tab || !(tab.input instanceof vscode.TabInputWebview) ||
+        !tab.input.viewType.includes('claudeVSCodePanel')) { return; }
+    const id = matchSessionByTabLabel(tab.label, this.sessions.values());
+    if (!id || (!force && id === this.focusedSessionId)) { return; }
+    this.focusedSessionId = id;
+    this.postMessage({ type: 'focusSession', sessionId: id });
   }
 
   private postMessage(msg: ExtensionToWebview): void {
@@ -249,6 +271,8 @@ export class Panel implements vscode.WebviewViewProvider {
       type: 'sessionsUpdate',
       sessions: Array.from(sessions.values()),
     });
+    // A tab's chat title may only appear in the log after the tab opens.
+    this.syncActiveTab();
   }
 
   onReady(callback: () => void): void {
@@ -291,28 +315,18 @@ export class Panel implements vscode.WebviewViewProvider {
 
     let gitBranch = '';
     let gitRemote = '';
-    let gitUser = '';
     let gitLastCommit = '';
     let uncommittedCount = 0;
     let ahead = 0;
     let behind = 0;
-    let totalCommits = 0;
-    let lastCommitDate = '';
-    let contributors = 0;
     let stashCount = 0;
-    let branchCount = 0;
-    let tagCount = 0;
     let isPrivate: boolean | null = null;
-    let stars = 0;
-    let forks = 0;
     let openIssues = 0;
     let openPRs = 0;
-    let lastPushed = '';
-    let repoCreated = '';
-    let diskUsage = '';
+    let activity: GitActivity[] = [];
 
     const git = (cmd: string): string => {
-      try { return execSync(cmd, { cwd, encoding: 'utf8', timeout: 5000 }).trim(); }
+      try { return execSync(cmd, { cwd, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
       catch { return ''; }
     };
 
@@ -323,21 +337,22 @@ export class Panel implements vscode.WebviewViewProvider {
         const match = remote.match(/[/:]([\w.-]+\/[\w.-]+?)(?:\.git)?$/);
         gitRemote = match ? match[1] : remote;
       }
-      gitUser = git('git config user.name');
       gitLastCommit = git('git log -1 --format=%s');
-      lastCommitDate = git('git log -1 --format=%ai');
       const status = git('git status --porcelain');
       uncommittedCount = status ? status.split('\n').length : 0;
       ahead = parseInt(git('git rev-list @{u}..HEAD --count'), 10) || 0;
       behind = parseInt(git('git rev-list HEAD..@{u} --count'), 10) || 0;
-      totalCommits = parseInt(git('git rev-list --count HEAD'), 10) || 0;
-      const contribOut = git('git shortlog -sn --all');
-      contributors = contribOut ? contribOut.split('\n').length : 0;
       const stashOut = git('git stash list');
       stashCount = stashOut ? stashOut.split('\n').length : 0;
-      const branchOut = git('git branch -a');
-      branchCount = branchOut ? branchOut.split('\n').length : 0;
-      tagCount = parseInt(git('git tag -l | wc -l'), 10) || 0;
+
+      // Recent activity: HEAD reflog (commits/merges/pulls) + the remote
+      // branch's reflog, which is where pushes are recorded.
+      const fmt = "--date=unix --format='%gd%x09%gs'";
+      const lists = [parseReflog(git(`git reflog show HEAD -n 40 ${fmt}`), 'head')];
+      if (gitBranch && gitBranch !== 'HEAD') {
+        lists.push(parseReflog(git(`git reflog show refs/remotes/origin/${gitBranch} -n 20 ${fmt}`), 'remote'));
+      }
+      activity = mergeActivity(lists);
 
       // GitHub API data via gh CLI (cached — see GH_CACHE_MS)
       let ghJson: string;
@@ -345,23 +360,15 @@ export class Panel implements vscode.WebviewViewProvider {
           Date.now() - this.ghCache.ts < Panel.GH_CACHE_MS) {
         ghJson = this.ghCache.json;
       } else {
-        ghJson = git('gh repo view --json isPrivate,stargazerCount,forkCount,pushedAt,createdAt,diskUsage,issues,pullRequests 2>/dev/null');
+        ghJson = git('gh repo view --json isPrivate,issues,pullRequests 2>/dev/null');
         this.ghCache = { cwd, ts: Date.now(), json: ghJson };
       }
       if (ghJson) {
         try {
           const gh = JSON.parse(ghJson);
           isPrivate = gh.isPrivate ?? null;
-          stars = gh.stargazerCount ?? 0;
-          forks = gh.forkCount ?? 0;
           openIssues = gh.issues?.totalCount ?? 0;
           openPRs = gh.pullRequests?.totalCount ?? 0;
-          lastPushed = gh.pushedAt ?? '';
-          repoCreated = gh.createdAt ?? '';
-          if (gh.diskUsage) {
-            const kb = gh.diskUsage;
-            diskUsage = kb >= 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
-          }
         } catch { /* ignore parse errors */ }
       }
     }
@@ -376,25 +383,15 @@ export class Panel implements vscode.WebviewViewProvider {
           : '',
         gitBranch,
         gitRemote,
-        gitUser,
         gitLastCommit,
         uncommittedCount,
         ahead,
         behind,
-        totalCommits,
-        lastCommitDate,
-        contributors,
         stashCount,
-        branchCount,
-        tagCount,
         isPrivate,
-        stars,
-        forks,
         openIssues,
         openPRs,
-        lastPushed,
-        repoCreated,
-        diskUsage,
+        activity,
       },
     });
   }

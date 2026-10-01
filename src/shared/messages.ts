@@ -5,6 +5,7 @@ import type { SessionState, UsageStats } from '../session/types';
 import type { SkillCategory } from '../session/categorize';
 import type { CliInfo } from '../session/clis';
 import type { TokenEvent } from '../session/tokenActivity';
+import type { GitActivity } from '../session/gitActivity';
 
 export interface ProjectInfo {
   workspace:        string;
@@ -12,25 +13,15 @@ export interface ProjectInfo {
   activeFile:       string;
   gitBranch:        string;
   gitRemote:        string;
-  gitUser:          string;
   gitLastCommit:    string;
   uncommittedCount: number;
   ahead:            number;
   behind:           number;
-  totalCommits:     number;
-  lastCommitDate:   string;
-  contributors:     number;
   stashCount:       number;
-  branchCount:      number;
-  tagCount:         number;
   isPrivate:        boolean | null;
-  stars:            number;
-  forks:            number;
   openIssues:       number;
   openPRs:          number;
-  lastPushed:       string;
-  repoCreated:      string;
-  diskUsage:        string;
+  activity:         GitActivity[];
 }
 
 export interface EnvData {
@@ -46,7 +37,8 @@ export type ExtensionToWebview =
   | { type: 'projectInfo';    data: ProjectInfo }
   | { type: 'envData';        data: EnvData }
   | { type: 'usageUpdate';    usage: UsageStats }
-  | { type: 'tokenActivity';  events: TokenEvent[]; windowHours: number };
+  | { type: 'tokenActivity';  events: TokenEvent[]; windowHours: number }
+  | { type: 'focusSession';   sessionId: string };
 
 export type WebviewToExtension =
   | { type: 'ready' }

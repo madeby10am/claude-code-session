@@ -3,8 +3,9 @@ import * as path from 'path';
 import { CLAUDE_PROJECTS_DIR } from './claudeEnvironment';
 
 export interface TokenEvent {
-  ts:     number;
-  tokens: number;
+  ts:        number;
+  tokens:    number;
+  sessionId: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -55,6 +56,7 @@ export function getRecentTokenEvents(
     // One API response spans several adjacent lines with the same message.id,
     // each repeating the same usage — count each id once.
     let lastMsgId: string | undefined;
+    const sessionId = path.basename(filePath, '.jsonl');
 
     for (const line of content.split('\n')) {
       if (!line || !line.includes('"usage"')) continue;
@@ -82,7 +84,7 @@ export function getRecentTokenEvents(
       const cacheR = (usage.cache_read_input_tokens     as number | undefined) ?? 0;
       const output = (usage.output_tokens               as number | undefined) ?? 0;
       const total  = input + cacheC + cacheR + output;
-      if (total > 0) events.push({ ts, tokens: total });
+      if (total > 0) events.push({ ts, tokens: total, sessionId });
     }
   }
 

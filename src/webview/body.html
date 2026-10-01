@@ -9,6 +9,11 @@
         <span class="header-path" id="pi-path" onclick="if(this.dataset.path)vscodeApi.postMessage({type:'openFolder',path:this.dataset.path})"></span>
       </div>
     </div>
+    <!-- ACTIVE SESSION -->
+    <div class="sticky-session" id="sticky-session" hidden>
+      <span class="sticky-session-name" id="sticky-session-name"></span>
+      <span class="sticky-session-model" id="sticky-session-model"></span>
+    </div>
     <!-- ROBOT STATUS BAR -->
     <div class="robot-bar">
       <canvas class="robot-bar-canvas" id="robot-bar-canvas" width="48" height="48"></canvas>
@@ -61,7 +66,7 @@
           </div>
         </div>
         <div class="session-time">
-          <span class="stat-value" id="usage-plan-label" style="font-size:10px;">&mdash;</span>
+          <span class="stat-value" id="usage-plan-label">&mdash;</span>
           <button class="card-refresh-btn" title="Refresh all" onclick="event.stopPropagation();refreshUsage();">&#x21bb;</button>
         </div>
       </div>
@@ -76,9 +81,14 @@
         <span id="token-activity-total">&mdash;</span>
         <span id="token-activity-range" class="legend-range">last 5h</span>
       </div>
+      <div class="token-activity-stats" id="token-activity-stats"></div>
       <canvas id="token-activity-canvas" width="400" height="75" style="width:100%;height:75px;display:block;"></canvas>
       <div id="token-activity-empty" class="cap-item" style="color:var(--text-muted);padding-top:2px;">No messages in the selected window.</div>
       <div class="token-activity-footer">
+        <div class="token-scope" id="token-scope" role="group" aria-label="Token scope">
+          <button class="token-scope-btn" data-scope="all" aria-pressed="true">All</button>
+          <button class="token-scope-btn" data-scope="session" aria-pressed="false">This session</button>
+        </div>
         <div id="token-window-filter" class="token-window-stepper">
           <button class="token-window-arrow" id="token-window-prev" title="Earlier window"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="10" height="10"><polyline points="15 18 9 12 15 6"/></svg></button>
           <button class="token-window-label" id="token-window-label-btn">5h</button>
@@ -102,25 +112,22 @@
   <div class="section" id="git-status-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>Git Status <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
     <div class="section-body framed" id="git-status-body">
+      <div class="git-activity" id="git-activity" data-kind="none">
+        <span class="git-activity-dot"></span>
+        <span class="git-activity-text" id="git-activity-text">No recent activity</span>
+        <span class="git-activity-ago" id="git-activity-ago"></span>
+      </div>
       <div class="stat-row"><span class="stat-label">Repo</span><span class="stat-value" id="git-repo">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Visibility</span><span class="stat-value" id="git-visibility">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value" id="git-branch2">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Branches</span><span class="stat-value" id="git-branch-count">&mdash;</span></div>
+      <div class="stat-row"><span class="stat-label">Branch</span><span class="stat-value"><span id="git-branch2">&mdash;</span> <span class="stat-dim" id="git-ahead-behind"></span></span></div>
       <div class="stat-row"><span class="stat-label">Changes</span><span class="stat-value" id="git-uncommitted">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Ahead/Behind</span><span class="stat-value" id="git-ahead-behind">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Commits</span><span class="stat-value" id="git-total-commits">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Contributors</span><span class="stat-value" id="git-contributors">&mdash;</span></div>
       <div class="stat-row"><span class="stat-label">Last Commit</span><span class="stat-value" id="git-last-commit" title="">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Committed</span><span class="stat-value" id="git-last-commit-date">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Last Push</span><span class="stat-value" id="git-last-pushed">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Created</span><span class="stat-value" id="git-created">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Stars</span><span class="stat-value" id="git-stars">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Forks</span><span class="stat-value" id="git-forks">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Issues</span><span class="stat-value" id="git-issues">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">PRs</span><span class="stat-value" id="git-prs">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Tags</span><span class="stat-value" id="git-tags">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Stashes</span><span class="stat-value" id="git-stashes">&mdash;</span></div>
-      <div class="stat-row"><span class="stat-label">Size</span><span class="stat-value" id="git-size">&mdash;</span></div>
+      <div class="git-counts">
+        <span class="git-count"><span class="stat-label">Issues</span><span class="stat-value" id="git-issues">&mdash;</span></span>
+        <span class="git-count"><span class="stat-label">PRs</span><span class="stat-value" id="git-prs">&mdash;</span></span>
+        <span class="git-count"><span class="stat-label">Stashes</span><span class="stat-value" id="git-stashes">&mdash;</span></span>
+      </div>
+      <button class="git-history-toggle" id="git-history-toggle" aria-expanded="false">History</button>
+      <div class="git-history" id="git-history" hidden></div>
     </div>
   </div>
 
@@ -152,7 +159,7 @@
   <div class="section" id="skills-section" draggable="true">
     <div class="section-header" data-open="true" onclick="toggleSection(this)"><svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Skills <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
     <div class="section-body framed gray">
-      <input type="text" id="skills-search" placeholder="Search skills..." style="width:100%;padding:4px 8px;margin-bottom:6px;font-size:11px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa;color:#333;font-family:inherit;outline:none;">
+      <input type="text" id="skills-search" placeholder="Search skills...">
       <div id="skills-filter" style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">
         <button class="skills-filter-btn" data-filter="all" data-active="true">All</button>
         <button class="skills-filter-btn" data-filter="user" data-active="false">User</button>
