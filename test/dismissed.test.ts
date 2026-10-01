@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { visibleSessions, dismiss, forgetStale, DISMISS_GRACE_MS } from '../src/session/dismissed';
 import type { SessionState } from '../src/session/types';
 
-const mk = (sessionId: string, lastSeen: number) => ({ sessionId, lastSeen } as SessionState);
+const mk = (sessionId: string, lastSeen: number, entrypoint = 'claude-vscode') =>
+  ({ sessionId, lastSeen, entrypoint } as SessionState);
 
 describe('visibleSessions', () => {
   it('hides a dismissed session with no newer activity', () => {
@@ -18,6 +19,13 @@ describe('visibleSessions', () => {
   it('shows a dismissed session again once it has real new activity', () => {
     const d = dismiss({}, 'a', 1000);
     expect(visibleSessions([mk('a', 1000 + DISMISS_GRACE_MS + 1)], d)).toHaveLength(1);
+  });
+});
+
+describe('background sessions', () => {
+  it('never shows Agent SDK sessions', () => {
+    const all = [mk('ui', 1), mk('bg', 1, 'sdk-py'), mk('bg2', 1, 'sdk-ts')];
+    expect(visibleSessions(all, {}).map(s => s.sessionId)).toEqual(['ui']);
   });
 });
 

@@ -233,13 +233,15 @@ export class Panel implements vscode.WebviewViewProvider {
     }
 
     // 4. Not open anywhere: reopen in the Claude editor, falling back to a resumed terminal
-    if (this.sessions.get(sessionId)?.entrypoint === 'claude-vscode') {
+    const session = this.sessions.get(sessionId);
+    if (session?.entrypoint === 'claude-vscode') {
       try {
         await vscode.commands.executeCommand('claude-vscode.primaryEditor.open', sessionId);
         return;
       } catch { /* extension missing or command changed: use the terminal */ }
     }
-    const terminal = vscode.window.createTerminal(`Claude: ${prefix}`);
+    // Resume only finds the session from the folder it was started in.
+    const terminal = vscode.window.createTerminal({ name: `Claude: ${prefix}`, cwd: session?.cwd || undefined });
     terminal.sendText(`claude --resume ${sessionId}`);
     terminal.show();
     this.terminalMap.set(sessionId, terminal);

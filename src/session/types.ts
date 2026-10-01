@@ -76,4 +76,10 @@ export function getContextLimit(model: string): number {
   return 200_000;
 }
 
+// Sessions driven by the Agent SDK (background reviews, scripts) are not ones the
+// user opened, and `claude --resume` on them is meaningless, so they stay out of the UI.
+export function isBackgroundSession(s: Pick<SessionState, 'entrypoint'>): boolean {
+  return s.entrypoint.startsWith('sdk');
+}
+
 export const HUE_STEPS = [0, 45, 120, 200, 270, 330, 160, 80];

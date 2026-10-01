@@ -4,6 +4,7 @@
   --bg-card:       color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background));
   --bg-card-hover: var(--vscode-list-hoverBackground);
   --border:        var(--vscode-sideBar-border, color-mix(in srgb, var(--vscode-foreground) 18%, transparent));
+  --border-card:   color-mix(in srgb, var(--vscode-foreground) 38%, transparent);
   --border-hover:  color-mix(in srgb, var(--vscode-foreground) 32%, transparent);
   --text:          var(--vscode-sideBar-foreground, var(--vscode-foreground));
   --text-bright:   var(--vscode-foreground);
@@ -67,12 +68,12 @@ body::before {
   z-index: 10;
   background: var(--bg);
   backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
 }
 
 /* ===== Header ===== */
 .header {
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 14px 3px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -86,6 +87,7 @@ body::before {
 }
 .header-right {
   flex-shrink: 0;
+  display: flex; align-items: center; gap: 6px;
 }
 .header-path {
   font-size: var(--fs-xs);
@@ -168,13 +170,13 @@ body::before {
   height: 14px;
   color: var(--text-bright);
   transition: transform 0.2s, color 0.15s;
-  margin-left: auto;
   flex-shrink: 0;
 }
 .section-pin {
   width: 14px;
   height: 14px;
   cursor: pointer;
+  margin-left: auto;
   margin-right: 2px;
   flex-shrink: 0;
   color: var(--text-muted);
@@ -205,7 +207,7 @@ body::before {
 .session-card {
   position: relative;
   isolation: isolate;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-card);
   border-radius: 8px;
   padding: 7px 10px 8px;
   margin-top: 6px;
@@ -1100,24 +1102,6 @@ body::before {
 
 
 
-/* ===== Sessions header: new-session action ===== */
-.section-action {
-  margin-left: auto;
-  padding: 1px 7px;
-  background: none;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  color: inherit;
-  font: inherit;
-  font-size: var(--fs-2xs);
-  letter-spacing: 0.04em;
-  text-transform: none;
-  cursor: pointer;
-  opacity: 0.8;
-  transition: opacity 0.15s, background 0.15s;
-}
-.section-action:hover { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); }
-.section-action ~ .section-chevron { margin-left: 0; }
 
 
 /* ===== Card dismiss: corner button, shown on hover/focus ===== */
@@ -1150,13 +1134,14 @@ body::before {
 /* ===== Usage strip: thin, sticky, no box ===== */
 .usage-strip {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 5px 12px 3px 14px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 3px 14px 7px;
 }
-.usage-chip { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.usage-chip { min-width: 0; display: flex; align-items: center; gap: 8px; }
 .usage-chip-label {
   flex-shrink: 0;
+  width: 44px;
   font-size: var(--fs-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1173,7 +1158,7 @@ body::before {
 .usage-fill { display: block; height: 100%; border-radius: 2px; }
 .usage-chip-value {
   flex-shrink: 0;
-  min-width: 24px;
+  min-width: 28px;
   text-align: right;
   font-family: var(--font-mono);
   font-size: var(--fs-2xs);
@@ -1195,3 +1180,40 @@ body::before {
 .usage-refresh:hover { color: var(--accent); transform: rotate(90deg); }
 @media (max-width: 220px) { .usage-chip-label { display: none; } }
 @media (prefers-reduced-motion: reduce) { .usage-refresh:hover { transform: none; } }
+
+
+/* ===== New session: big, full-width ===== */
+.new-session-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.2s var(--ease-out), color 0.2s, border-color 0.2s, box-shadow 0.25s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.new-session-plus { font-size: 17px; font-weight: 400; line-height: 1; transition: transform 0.3s var(--ease-out); }
+.new-session-btn:hover {
+  border-style: solid;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--vscode-button-background, var(--accent)), var(--vscode-button-hoverBackground, var(--accent)));
+  color: var(--vscode-button-foreground, #fff);
+  box-shadow: 0 6px 16px -6px color-mix(in srgb, var(--vscode-button-background, var(--accent)) 70%, transparent);
+  transform: translateY(-1px);
+}
+.new-session-btn:hover .new-session-plus { transform: rotate(90deg); }
+.new-session-btn:active { transform: translateY(0); box-shadow: none; }
+.new-session-btn:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .new-session-btn:hover, .new-session-btn:hover .new-session-plus { transform: none; }
+}

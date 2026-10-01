@@ -6,6 +6,7 @@ import {
   SessionState,
   UsageStats,
   HUE_STEPS,
+  isBackgroundSession,
 } from './session/types';
 import {
   defaultSession,
@@ -108,6 +109,7 @@ export class SessionManager {
 
   getRecentSessions(): { sessionId: string; title: string; lastSeen: number; activity: string }[] {
     return Array.from(this.sessions.values())
+      .filter(s => !isBackgroundSession(s))
       .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))
       .slice(0, 5)
       .map(s => ({

@@ -1,51 +1,48 @@
 # Claude Code Session
 
-A VS Code sidebar extension that monitors your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI sessions in real time — with an animated pixel-art robot companion, live activity tracking, usage meters, a token-rate chart, and a full project dashboard.
+A VS Code sidebar extension that monitors your [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI sessions in real time — with live per-session cards that follow the tab you're in, thin always-visible usage meters, a token-rate chart, and a git activity feed across all your project repos.
 
 The sidebar inherits whatever VS Code theme you have active, so it always matches your editor.
 
 ## What you get
 
-### Sticky header — project + robot status bar
-The top of the sidebar shows your current **workspace name** and file path, plus a sticky **robot status bar**: a pixel-art robot that animates based on what Claude is doing (thinking, reading, editing, running, searching, delegating…) next to a live speech bubble showing the current action (e.g. *"Editing `panel.ts`"*). Different tools map to different robot animations — destructive actions even zap him.
+### Sticky header — folder + usage
+Always visible at the top: the **folder name** (with path, click to reveal), then two thin full-width usage bars, **Session** on top and **Week** underneath, with a ↻ refresh and an `EXTRA` badge when you cross into overage.
+
+Each bar has a **time-elapsed marker** showing how far through the window you are, and the fill is **pace-based**: green when under-pacing, yellow on-pace, orange/red when burning faster than the clock. Reset countdown and plan appear in the tooltip. Reads live data from your Claude credentials.
+
+> The pixel-art robot status bar is parked in an inert `<template>` at the bottom of `src/webview/body.html`. Move it back into `#sticky-top` to restore it.
 
 ### Sessions
-Your current active Claude Code session, rendered as a card with:
+One compact card per open session, all with the same layout:
 
-- **Activity badge** — color-coded, pulsating status (Thinking / Working / Responding / Waiting / Idle)
-- **Gradient border ring** — a neon border glow that changes color based on the activity state
-- **Model, current file, permission mode, entrypoint (VS Code / CLI / Desktop), turn count, tool count**
-- **Input / output token counters** — per-turn *and* cumulative
-- **Context meter** — a visual progress bar of context-window usage that shifts from green → yellow → red
-- **"YOUR TURN" badge** when Claude is waiting for you
-- **Started at / elapsed duration** ticker that updates every second
-- **+ button** to spin up a new session
+- Status dot, **session name**, and a color-coded **state tag** (Working / Thinking / Waiting / Your turn / Sleeping)
+- **Model** chip, permission **mode**, and **start time** (with a live elapsed ticker for today's sessions)
+- Thin **context bar** with percentage
+- Hover for the details: current file, source, turns, tools, in/out tokens
 
-Click the card to jump to or resume that session's terminal.
+The session whose Claude editor tab is active gets the activity-colored ring. **Click another Claude tab and the sidebar jumps to that session instantly.** Click any card to bring its tab to the front (or reopen/resume it if it's closed).
 
-### Usage
-Two pacing meters showing your Claude plan's consumption:
-
-- **Session** (resets every 5 hours) — how much of the current window you've burned
-- **This week** (resets every 7 days) — weekly budget
-
-Each bar has a **time-elapsed marker** that shows how far through the window you are, and the fill color is **pace-based**: green when you're under-pacing, yellow on-pace, orange/red when you're burning faster than the clock. Includes reset countdown and an `EXTRA USAGE` badge when you cross into overage territory. Reads live data from your Claude credentials.
+- **Closing a Claude tab** removes its session from the list. A **×** on hover removes one manually (e.g. terminal sessions). A removed session comes back if it shows new activity.
+- Background Agent SDK sessions (e.g. automated reviews) are never listed.
+- A big **+ New session** button sits under the cards.
 
 ### Token Activity
 A compact bar chart of tokens spent over time, with:
 
-- **Vertical-gradient bars** — green at low usage, warming to yellow/orange/red at the peaks
-- **Connect-the-tops line + dot markers** — showing the trend across buckets
+- **Vertical-gradient bars** and a smooth **connect-the-tops line** with dot markers
 - **Y-axis ticks** auto-rounded to nice numbers (1k / 2k / 5k…)
-- **Time-window stepper** — `[<] 5h [>]` with arrows to cycle through 5m / 15m / 30m / 1h / 5h / 12h / 24h, or click the label for a dropdown
-- **Total tokens + message count** in the header
+- **Time-window stepper** — `[<] 5h [>]` to cycle 5m / 15m / 30m / 1h / 5h / 12h / 24h, or click the label for a dropdown
+- **All / This session** toggle: scope the chart to the session you're focused on
+- **Pace line**: average tokens per minute and the peak slice
 
 ### Git Status
-Everything about the current repo at a glance:
+Follows the repo of the session you're in. Your workspace folder doesn't need to be a repo itself, so a folder of projects works fine.
 
-- Repo name (clickable → opens on GitHub), branch, uncommitted count, ahead/behind arrows
-- Last commit message + timestamp, total commits, contributors, branch count, tags, stashes
-- When the remote is a GitHub repo: visibility (public/private), stars, forks, open issues, open PRs, last-pushed, created date, disk size
+- **Last activity** headline: the latest push or pull across *all* open sessions' repos ("Pushed · my-repo · 3m ago"), with a pulsing dot when it happened in the last minute
+- **History** (expandable): recent pushes, pulls, merges and commits across every session's repo
+- Repo link (opens on GitHub) with a private/public chip, branch with ↑↓, changes, last commit
+- Issues, PRs and stashes at a glance
 
 ### Recent Files
 Files Claude has touched in this session, click-to-open. Updates as Claude reads/writes.
@@ -100,7 +97,7 @@ Then either press **F5** in VS Code to launch an Extension Development Host, or 
 
 ## Usage
 
-1. Open the **Claude Code Session** sidebar (robot icon in the activity bar)
+1. Open the **Claude Code Session** sidebar (icon in the activity bar)
 2. Start a Claude Code session in your terminal (`claude`) or the VS Code extension
 3. Watch the sidebar update in real time
 
@@ -115,6 +112,8 @@ The extension watches `~/.claude/projects/` for JSONL session log files and pars
 - Activity state (idle, thinking, tooling, responding, sleeping)
 - Tool usage (file reads, edits, bash commands, searches)
 - Context-window utilization
+
+Git status and history are read straight from `git` (reflogs), scoped to the repos your sessions run in. Everything is per VS Code window.
 
 All rendering happens in an inline webview with zero runtime dependencies.
 

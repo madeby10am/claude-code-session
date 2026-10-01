@@ -1,4 +1,4 @@
-import type { SessionState } from './types';
+import { isBackgroundSession, type SessionState } from './types';
 
 // sessionId -> time (ms) the user closed or dismissed it. A dismissed session
 // stays hidden until its log shows activity after that moment.
@@ -10,6 +10,7 @@ const FORGET_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export function visibleSessions(all: Iterable<SessionState>, dismissed: Dismissed): SessionState[] {
   return Array.from(all).filter(s => {
+    if (isBackgroundSession(s)) { return false; }
     const at = dismissed[s.sessionId];
     return at === undefined || (s.lastSeen || 0) > at;
   });
