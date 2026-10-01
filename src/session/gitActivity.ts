@@ -8,6 +8,7 @@ export interface GitActivity {
   kind:  GitActivityKind;
   ts:    number;   // ms
   label: string;   // short detail, e.g. commit subject
+  repo?: string;   // folder name of the repo it happened in
 }
 
 // Lines look like `HEAD@{1699999999}\tcommit: fix thing` (from --date=unix).
@@ -50,7 +51,7 @@ export function mergeActivity(lists: GitActivity[][], limit = 8): GitActivity[] 
   const all = lists.flat().sort((a, b) => b.ts - a.ts);
   const out: GitActivity[] = [];
   for (const e of all) {
-    const dup = out.some(o => o.kind === e.kind && Math.abs(o.ts - e.ts) < 5000);
+    const dup = out.some(o => o.repo === e.repo && o.kind === e.kind && Math.abs(o.ts - e.ts) < 5000);
     if (!dup) out.push(e);
     if (out.length >= limit) break;
   }

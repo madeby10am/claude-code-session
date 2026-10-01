@@ -23,4 +23,10 @@ describe('mergeActivity', () => {
     const out = mergeActivity([a, b]);
     expect(out.map(e => e.kind)).toEqual(['pushed', 'pulled']);
   });
+
+  it('keeps same-time events from different repos', () => {
+    const a = [{ kind: 'pushed' as const, ts: 10_000, label: '', repo: 'one' }];
+    const b = [{ kind: 'pushed' as const, ts: 10_500, label: '', repo: 'two' }];
+    expect(mergeActivity([a, b])).toHaveLength(2);
+  });
 });

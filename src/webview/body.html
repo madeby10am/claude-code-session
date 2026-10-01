@@ -2,6 +2,21 @@
 
   <!-- STICKY TOP -->
   <div id="sticky-top">
+    <!-- USAGE (thin, always visible) -->
+    <div class="usage-strip">
+      <div class="usage-chip" id="usage-today-chip">
+        <span class="usage-chip-label">Session</span>
+        <span class="usage-track"><span class="usage-fill" id="usage-today-bar" data-level="green" style="width:0%"></span><span class="time-marker" id="usage-today-marker"></span></span>
+        <span class="usage-chip-value" id="usage-today-value">&mdash;</span>
+      </div>
+      <div class="usage-chip" id="usage-week-chip">
+        <span class="usage-chip-label">Week</span>
+        <span class="usage-track"><span class="usage-fill" id="usage-week-bar" data-level="green" style="width:0%"></span><span class="time-marker" id="usage-week-marker"></span></span>
+        <span class="usage-chip-value" id="usage-week-value">&mdash;</span>
+      </div>
+      <span class="extra-usage-badge" id="usage-extra" hidden>EXTRA</span>
+      <button class="usage-refresh" title="Refresh usage" aria-label="Refresh usage" onclick="refreshUsage()">&#x21bb;</button>
+    </div>
     <!-- HEADER -->
     <div class="header">
       <div class="header-left">
@@ -9,19 +24,6 @@
         <span class="header-path" id="pi-path" onclick="if(this.dataset.path)vscodeApi.postMessage({type:'openFolder',path:this.dataset.path})"></span>
       </div>
     </div>
-    <!-- ACTIVE SESSION -->
-    <div class="sticky-session" id="sticky-session" hidden>
-      <span class="sticky-session-name" id="sticky-session-name"></span>
-      <span class="sticky-session-model" id="sticky-session-model"></span>
-    </div>
-    <!-- ROBOT STATUS BAR -->
-    <div class="robot-bar">
-      <canvas class="robot-bar-canvas" id="robot-bar-canvas" width="48" height="48"></canvas>
-      <div class="robot-bar-bubble" id="robot-bar-bubble">
-        <span class="robot-bar-text" id="robot-bar-text">Idle</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
-      </div>
-    </div>
-
   </div><!-- /sticky-top -->
 
   <!-- SESSIONS -->
@@ -35,41 +37,6 @@
       <div class="empty-state" id="empty-msg">
         <div class="empty-icon">&#x25CB;</div>
         No active Claude session in this project
-      </div>
-    </div>
-  </div>
-
-  <!-- USAGE METERS -->
-  <div class="section" id="usage-section" draggable="true">
-    <div class="section-header" data-open="true" onclick="toggleSection(this)">
-      <svg class="section-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="18" y="3" width="4" height="18"/><rect x="10" y="8" width="4" height="13"/><rect x="2" y="13" width="4" height="8"/></svg>Usage <svg class="section-pin" data-pinned="false" onclick="event.stopPropagation();togglePin(this)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg><svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </div>
-    <div class="section-body">
-      <div class="usage-card">
-        <div class="usage-meter">
-          <div class="usage-meter-label">
-            <span class="stat-label">Session</span>
-            <span class="stat-value" id="usage-today-value">&mdash;</span>
-          </div>
-          <div class="context-bar-track" style="position:relative;overflow:visible;">
-            <div class="context-bar-fill" id="usage-today-bar" data-level="green" style="width:0%"></div>
-            <div class="time-marker" id="usage-today-marker"></div>
-          </div>
-        </div>
-        <div class="usage-meter" style="margin-top:8px;">
-          <div class="usage-meter-label">
-            <span class="stat-label">This Week</span>
-            <span class="stat-value" id="usage-week-value">&mdash;</span>
-          </div>
-          <div class="context-bar-track" style="position:relative;overflow:visible;">
-            <div class="context-bar-fill" id="usage-week-bar" data-level="green" style="width:0%"></div>
-            <div class="time-marker" id="usage-week-marker"></div>
-          </div>
-        </div>
-        <div class="session-time">
-          <span class="stat-value" id="usage-plan-label">&mdash;</span>
-          <button class="card-refresh-btn" title="Refresh all" onclick="event.stopPropagation();refreshUsage();">&#x21bb;</button>
-        </div>
       </div>
     </div>
   </div>
@@ -185,3 +152,13 @@
 
 
 </div>
+
+<!-- Robot status bar: parked, not rendered. Move this block back into #sticky-top to restore it. -->
+<template id="robot-bar-template">
+    <div class="robot-bar">
+      <canvas class="robot-bar-canvas" id="robot-bar-canvas" width="48" height="48"></canvas>
+      <div class="robot-bar-bubble" id="robot-bar-bubble">
+        <span class="robot-bar-text" id="robot-bar-text">Idle</span><span class="dots"><span>.</span><span>.</span><span>.</span></span>
+      </div>
+    </div>
+</template>

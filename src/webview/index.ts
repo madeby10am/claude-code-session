@@ -184,8 +184,6 @@ function renderSessions(sessions) {
     .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
 
   if (sorted.length === 0) {
-    const st = document.getElementById('sticky-session');
-    if (st) st.hidden = true;
     list.innerHTML = '';
     const d = document.createElement('div');
     d.className = 'empty-state'; d.id = 'empty-msg';
@@ -218,13 +216,6 @@ function renderSessions(sessions) {
   // Update per-card animations
   updateAllAnimations(sorted);
 
-  // Always-visible "which session / which model" line in the sticky header
-  const stickyEl = document.getElementById('sticky-session');
-  if (stickyEl) {
-    stickyEl.hidden = false;
-    document.getElementById('sticky-session-name').textContent = shown.chatTitle || shown.projectName || shown.slug || '';
-    document.getElementById('sticky-session-model').textContent = modelLabel(shown.model);
-  }
   _focusedForTokens = shown.sessionId;
   if (_tokenScope === 'session') renderTokenActivity();
 
@@ -272,7 +263,7 @@ function renderGitActivity(activity) {
   const last = activity.find(e => e.kind === 'pushed' || e.kind === 'pulled') || activity[0];
   if (last) {
     box.dataset.kind = last.kind;
-    text.textContent = ACTIVITY_VERBS[last.kind];
+    text.textContent = ACTIVITY_VERBS[last.kind] + (last.repo ? ' \u00b7 ' + last.repo : '');
     ago.dataset.agoTs = String(last.ts);
   } else {
     box.dataset.kind = 'none';
@@ -287,7 +278,8 @@ function renderGitActivity(activity) {
       ? activity.map(e =>
           '<div class="git-history-row" data-kind="' + e.kind + '"><span class="git-activity-dot"></span>'
           + '<span class="git-history-verb">' + ACTIVITY_VERBS[e.kind] + '</span>'
-          + '<span class="git-history-label" title="' + esc(e.label) + '">' + esc(e.label) + '</span>'
+          + '<span class="git-history-label" title="' + esc((e.repo || '') + ' ' + e.label) + '">'
+          + (e.repo ? '<span class="git-history-repo">' + esc(e.repo) + '</span> ' : '') + esc(e.label) + '</span>'
           + '<span class="git-history-ago" data-ago-ts="' + e.ts + '">' + fmtAgo(e.ts) + '</span></div>'
         ).join('')
       : '<div class="cap-item" style="color:var(--text-muted);">No activity yet</div>';
@@ -346,7 +338,7 @@ window.addEventListener('message', e => {
         gr.innerHTML = '<a class="link" title="Open on GitHub" onclick="vscodeApi.postMessage({type:\'openUrl\',url:\'https://github.com/' + d.gitRemote + '\'})">' + d.gitRemote + ' \u2197</a>'
           + (vis ? ' <span class="vis-chip">' + vis + '</span>' : '');
       } else {
-        gr.textContent = '\u2014';
+        gr.textContent = d.repoName || '\u2014';
       }
     }
     const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
@@ -491,24 +483,19 @@ function updateUsageMeters(usage) {
   const sessVal = document.getElementById('usage-today-value');
   const weekVal = document.getElementById('usage-week-value');
 
-  const planEl = document.getElementById('usage-plan-label');
+  const extraEl = document.getElementById('usage-extra');
+  const sessChip = document.getElementById('usage-today-chip');
+  const weekChip = document.getElementById('usage-week-chip');
 
   const isExtra = !!(usage.overageInUse) || sessPct >= 100 || weekPct >= 100;
 
-  if (usage.live) {
-    if (sessVal) sessVal.innerHTML = (sessReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + sessReset + '</span> ' : '') + sessPct + '%';
-    if (weekVal) weekVal.innerHTML = (weekReset ? '<span style="color:var(--text-muted);font-weight:400;font-size:9px;">' + weekReset + '</span> ' : '') + weekPct + '%';
-    if (planEl) {
-      var label = usage.planTier ? 'Claude ' + usage.planTier : '';
-      planEl.innerHTML = isExtra
-        ? label + ' <span class="extra-usage-badge">EXTRA USAGE</span>'
-        : label;
-    }
-  } else {
-    if (sessVal) sessVal.textContent = 'No credentials found';
-    if (weekVal) weekVal.textContent = '';
-    if (planEl) planEl.innerHTML = '';
-  }
+  // The strip stays thin: just the percentage. Reset countdown and plan go in the tooltip.
+  const plan = usage.planTier ? ' (Claude ' + usage.planTier + ')' : '';
+  if (sessVal) sessVal.textContent = usage.live ? sessPct + '%' : '\u2014';
+  if (weekVal) weekVal.textContent = usage.live ? weekPct + '%' : '\u2014';
+  if (sessChip) sessChip.title = usage.live ? 'Session: ' + sessPct + '% used' + (sessReset ? ', ' + sessReset : '') + plan : 'No credentials found';
+  if (weekChip) weekChip.title = usage.live ? 'This week: ' + weekPct + '% used' + (weekReset ? ', ' + weekReset : '') + plan : 'No credentials found';
+  if (extraEl) extraEl.hidden = !(usage.live && isExtra);
 
   const sessBar = document.getElementById('usage-today-bar');
   const weekBar = document.getElementById('usage-week-bar');
@@ -522,9 +509,6 @@ function updateUsageMeters(usage) {
 
   if (sessBar) { sessBar.style.width = Math.min(100, sessPct) + '%'; sessBar.dataset.level = sessLevel; }
   if (weekBar) { weekBar.style.width = Math.min(100, weekPct) + '%'; weekBar.dataset.level = weekLevel; }
-
-  const usageCard = document.querySelector('.usage-card');
-  if (usageCard) usageCard.dataset.level = worseLevel(sessLevel, weekLevel);
 
   updateTimeMarkers(usage);
 }
@@ -1236,8 +1220,8 @@ function saveLayoutState() {
   vscodeApi.setState({ sectionOrder: order, sectionCollapsed: collapsed, sectionPinned: pinned });
 }
 
-// On first load (no saved state), collapse every section except Sessions, Usage, and Token Activity.
-const DEFAULT_OPEN = new Set(['sessions-section', 'usage-section', 'token-activity-section']);
+// On first load (no saved state), collapse every section except Sessions and Token Activity.
+const DEFAULT_OPEN = new Set(['sessions-section', 'token-activity-section']);
 
 function applyDefaultCollapse() {
   document.querySelectorAll('#root > .section[draggable]').forEach(s => {

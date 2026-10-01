@@ -13,6 +13,7 @@ export interface ProjectInfo {
   activeFile:       string;
   gitBranch:        string;
   gitRemote:        string;
+  repoName:         string;
   gitLastCommit:    string;
   uncommittedCount: number;
   ahead:            number;

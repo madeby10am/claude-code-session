@@ -21,6 +21,7 @@ export class Panel implements vscode.WebviewViewProvider {
   // refresh it far less often than the local git commands.
   private ghCache: { cwd: string; ts: number; json: string } | null = null;
   private static readonly GH_CACHE_MS = 5 * 60 * 1000;
+  private static readonly MAX_ACTIVITY_REPOS = 8;
   private terminalMap = new Map<string, vscode.Terminal>();
   private lastUsage: UsageStats | null = null;
   private lastEnvData: EnvData | null = null;
@@ -285,6 +286,7 @@ export class Panel implements vscode.WebviewViewProvider {
     if (!id || (!force && id === this.focusedSessionId)) { return; }
     this.focusedSessionId = id;
     this.postMessage({ type: 'focusSession', sessionId: id });
+    this.debouncedSendProjectInfo();
   }
 
   // Hide a session once its Claude editor tab is closed. The log file outlives the
@@ -310,6 +312,7 @@ export class Panel implements vscode.WebviewViewProvider {
     void this.context.workspaceState.update(Panel.DISMISSED_KEY, this.dismissed);
     if (this.focusedSessionId === sessionId) { this.focusedSessionId = undefined; }
     this.sendSessions(this.sessions);
+    this.debouncedSendProjectInfo();
   }
 
   private postMessage(msg: ExtensionToWebview): void {
@@ -360,10 +363,53 @@ export class Panel implements vscode.WebviewViewProvider {
     }, 300);
   }
 
+  // The session the sidebar is showing: the one whose tab is active, else the newest.
+  private focusedSession(): SessionState | undefined {
+    const visible = visibleSessions(this.sessions.values(), this.dismissed);
+    return visible.find(s => s.sessionId === this.focusedSessionId)
+      ?? visible.sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0))[0];
+  }
+
+  // The workspace root is often a folder of projects rather than a repo itself,
+  // so resolve each session's cwd to the git repo that contains it.
+  private static gitOut(cwd: string, ...args: string[]): string {
+    try { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+    catch { return ''; }
+  }
+
+  private static repoRoot(dir: string | undefined): string {
+    return dir ? Panel.gitOut(dir, 'rev-parse', '--show-toplevel') : '';
+  }
+
+  // Push/pull/merge/commit events for one repo, tagged with the repo's name.
+  private static repoActivity(root: string): GitActivity[] {
+    const reflog = (ref: string, n: string) =>
+      Panel.gitOut(root, 'reflog', 'show', ref, '-n', n, '--date=unix', '--format=%gd%x09%gs');
+    const branch = Panel.gitOut(root, 'rev-parse', '--abbrev-ref', 'HEAD');
+    const lists = [parseReflog(reflog('HEAD', '40'), 'head')];
+    // No shell: branch names are attacker-controlled (a cloned repo can name one `a;cmd`).
+    if (branch && branch !== 'HEAD') {
+      lists.push(parseReflog(reflog(`refs/remotes/origin/${branch}`, '20'), 'remote'));
+    }
+    const repo = path.basename(root);
+    return mergeActivity(lists).map(e => ({ ...e, repo }));
+  }
+
   sendProjectInfo(): void {
     const editor = vscode.window.activeTextEditor;
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    const cwd = workspaceFolder?.uri.fsPath ?? '';
+    const workspacePath = workspaceFolder?.uri.fsPath ?? '';
+
+    // Status follows the focused session's repo (else the newest session that sits in one);
+    // activity spans every session's repo.
+    const focused = this.focusedSession();
+    const ordered = visibleSessions(this.sessions.values(), this.dismissed)
+      .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+    if (focused) { ordered.unshift(focused); }
+    const roots = new Set(ordered.map(s => Panel.repoRoot(s.cwd)).filter(Boolean));
+    const workspaceRoot = Panel.repoRoot(workspacePath);
+    if (workspaceRoot) { roots.add(workspaceRoot); }
+    const cwd = roots.values().next().value ?? workspacePath;
 
     let gitBranch = '';
     let gitRemote = '';
@@ -375,16 +421,9 @@ export class Panel implements vscode.WebviewViewProvider {
     let isPrivate: boolean | null = null;
     let openIssues = 0;
     let openPRs = 0;
-    let activity: GitActivity[] = [];
 
     const git = (cmd: string): string => {
       try { return execSync(cmd, { cwd, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
-      catch { return ''; }
-    };
-
-    // No shell: branch names are attacker-controlled (a cloned repo can name one `a;cmd`).
-    const gitArgs = (...args: string[]): string => {
-      try { return execFileSync('git', args, { cwd, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
       catch { return ''; }
     };
 
@@ -403,17 +442,7 @@ export class Panel implements vscode.WebviewViewProvider {
       const stashOut = git('git stash list');
       stashCount = stashOut ? stashOut.split('\n').length : 0;
 
-      // Recent activity: HEAD reflog (commits/merges/pulls) + the remote
-      // branch's reflog, which is where pushes are recorded.
-      const reflog = (ref: string, n: string) =>
-        gitArgs('reflog', 'show', ref, '-n', n, '--date=unix', '--format=%gd%x09%gs');
-      const lists = [parseReflog(reflog('HEAD', '40'), 'head')];
-      if (gitBranch && gitBranch !== 'HEAD') {
-        lists.push(parseReflog(reflog(`refs/remotes/origin/${gitBranch}`, '20'), 'remote'));
-      }
-      activity = mergeActivity(lists);
-
-      // GitHub API data via gh CLI (cached — see GH_CACHE_MS)
+      // GitHub API data via gh CLI (cached per repo — see GH_CACHE_MS)
       let ghJson: string;
       if (this.ghCache && this.ghCache.cwd === cwd &&
           Date.now() - this.ghCache.ts < Panel.GH_CACHE_MS) {
@@ -432,16 +461,20 @@ export class Panel implements vscode.WebviewViewProvider {
       }
     }
 
+    const activity = mergeActivity(
+      Array.from(roots).slice(0, Panel.MAX_ACTIVITY_REPOS).map(r => Panel.repoActivity(r)), 8);
+
     this.postMessage({
       type: 'projectInfo',
       data: {
         workspace: workspaceFolder?.name ?? '',
-        workspacePath: cwd,
+        workspacePath,
         activeFile: editor
           ? vscode.workspace.asRelativePath(editor.document.uri)
           : '',
         gitBranch,
         gitRemote,
+        repoName: cwd ? path.basename(cwd) : '',
         gitLastCommit,
         uncommittedCount,
         ahead,

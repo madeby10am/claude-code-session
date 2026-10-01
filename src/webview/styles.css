@@ -129,9 +129,6 @@ body::before {
 #sessions-section        .section-header,
 #sessions-section        .section-header .section-chevron,
 #sessions-section        .section-header .section-icon    { color: #3b82f6; }  /* blue */
-#usage-section           .section-header,
-#usage-section           .section-header .section-chevron,
-#usage-section           .section-header .section-icon    { color: #f59e0b; }  /* amber */
 #token-activity-section  .section-header,
 #token-activity-section  .section-header .section-chevron,
 #token-activity-section  .section-header .section-icon    { color: #10b981; }  /* emerald */
@@ -852,40 +849,6 @@ body::before {
 .skill-badge-user { background: rgba(34,211,238,0.12); color: var(--accent); }
 .skill-badge-plugin { background: rgba(255,255,255,0.06); color: var(--text-dim); }
 
-/* ===== Usage meters ===== */
-.usage-card {
-  position: relative;
-  isolation: isolate;
-  border: none;
-  border-radius: 10px;
-  padding: 12px 14px 6px;
-  background: transparent;
-}
-.usage-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  z-index: 0;
-  background: var(--border);
-  transition: background 0.4s ease;
-}
-.usage-card::after {
-  content: '';
-  position: absolute;
-  inset: 2px;
-  border-radius: 8px;
-  background: var(--bg);
-  z-index: 0;
-}
-.usage-card > * { position: relative; z-index: 1; }
-
-.usage-card[data-level="green"]::before        { background: linear-gradient(135deg, #059669, #22c55e); }
-.usage-card[data-level="yellow-green"]::before { background: linear-gradient(135deg, #22c55e, #84cc16); }
-.usage-card[data-level="yellow"]::before       { background: linear-gradient(135deg, #84cc16, #eab308); }
-.usage-card[data-level="orange"]::before       { background: linear-gradient(135deg, #eab308, #f59e0b); }
-.usage-card[data-level="red"]::before          { background: linear-gradient(135deg, #f59e0b, #ef4444); }
-
 /* Pace-based bar color: solid colors with smooth transitions as user drifts from the timing line */
 #usage-today-bar, #usage-week-bar {
   background-image: none !important;
@@ -904,12 +867,6 @@ body::before {
   padding-top: 4px;
 }
 
-/* Usage card glow pulse — soft accent ring matching active-session rhythm */
-.usage-card { animation: glowUsage 2.4s ease-in-out infinite; }
-@keyframes glowUsage {
-  0%, 100% { box-shadow: 0 0 0px -2px rgba(34,211,238,0); }
-  50%      { box-shadow: 0 0 20px -2px rgba(34,211,238,0.28), 0 0 40px -5px rgba(14,165,233,0.14); }
-}
 
 /* Framed section bodies — 2px black gradient ring around content */
 .section-body.framed {
@@ -946,13 +903,6 @@ body::before {
     color-mix(in srgb, var(--vscode-foreground) 8%, transparent));
 }
 
-.usage-meter { }
-.usage-meter-label {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 3px;
-}
 
 /* ===== YOUR TURN badge (per-card) ===== */
 .your-turn-badge {
@@ -1063,26 +1013,7 @@ body::before {
 }
 
 
-/* ===== Active session line (sticky) ===== */
-.sticky-session {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--fs-sm);
-}
-.sticky-session[hidden] { display: none; }
-.sticky-session-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 600;
-  color: var(--text-bright);
-}
-.sticky-session-model, .model-chip {
+.model-chip {
   flex-shrink: 0;
   padding: 1px 7px;
   border-radius: 999px;
@@ -1212,3 +1143,55 @@ body::before {
 .session-card:focus-within > .card-dismiss { opacity: 1; transform: scale(1); }
 .session-card > .card-dismiss:hover { color: var(--red); border-color: var(--red); }
 @media (prefers-reduced-motion: reduce) { .session-card > .card-dismiss { transition: none; } }
+
+.git-history-repo { color: var(--text); font-weight: 500; }
+
+
+/* ===== Usage strip: thin, sticky, no box ===== */
+.usage-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 12px 3px 14px;
+}
+.usage-chip { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.usage-chip-label {
+  flex-shrink: 0;
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.usage-track {
+  position: relative;
+  flex: 1;
+  min-width: 18px;
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--vscode-foreground) 14%, transparent);
+}
+.usage-fill { display: block; height: 100%; border-radius: 2px; }
+.usage-chip-value {
+  flex-shrink: 0;
+  min-width: 24px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+.extra-usage-badge[hidden] { display: none; }
+.usage-refresh {
+  flex-shrink: 0;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s, transform 0.3s var(--ease-out);
+}
+.usage-refresh:hover { color: var(--accent); transform: rotate(90deg); }
+@media (max-width: 220px) { .usage-chip-label { display: none; } }
+@media (prefers-reduced-motion: reduce) { .usage-refresh:hover { transform: none; } }
