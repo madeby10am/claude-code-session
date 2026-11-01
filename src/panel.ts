@@ -2,12 +2,13 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync, execFileSync } from 'child_process';
-import { SessionState, UsageStats } from './sessionManager';
+import { SessionManager, SessionState, UsageStats } from './sessionManager';
 import { ExtensionToWebview, WebviewToExtension, EnvData } from './shared/messages';
 import { TokenEvent } from './session/tokenActivity';
 import { matchSessionByTabLabel } from './session/tabMatch';
 import { Dismissed, visibleSessions, dismiss, forgetStale } from './session/dismissed';
 import { GitActivity, parseReflog, mergeActivity } from './session/gitActivity';
+import { SavedSession, isRunning, runningSessionIds, sessionDataPaths } from './session/deleteSession';
 
 export class Panel implements vscode.WebviewViewProvider {
   private static instance: Panel | undefined;
@@ -29,6 +30,8 @@ export class Panel implements vscode.WebviewViewProvider {
   private focusedSessionId: string | undefined;
   private dismissed: Dismissed = {};
   private static readonly DISMISSED_KEY = 'dismissedSessions';
+  private static readonly EXIT_WAIT_MS = 3000;
+  private getSessionManager: (() => SessionManager) | null = null;
 
   private constructor(context: vscode.ExtensionContext) {
     this.context = context;
@@ -176,6 +179,13 @@ export class Panel implements vscode.WebviewViewProvider {
     if (msg.type === 'dismissSession' && msg.sessionId) {
       this.dismissSession(msg.sessionId);
     }
+    if (msg.type === 'deleteSession' && msg.sessionId) {
+      const session = this.getSessionManager?.().getSavedSession(msg.sessionId);
+      if (session) { void this.deleteSessions([session]); }
+    }
+    if (msg.type === 'pickSessionsToDelete') {
+      void this.pickSessionsToDelete();
+    }
     if (msg.type === 'openSession' && msg.sessionId) {
       void this.focusSession(msg.sessionId);
     }
@@ -317,6 +327,109 @@ export class Panel implements vscode.WebviewViewProvider {
     this.debouncedSendProjectInfo();
   }
 
+  private static sessionTitle(session: SavedSession): string {
+    return session.chatTitle || 'Untitled session';
+  }
+
+  // The session list only holds the last hour, so this is how older sessions are reached.
+  async pickSessionsToDelete(): Promise<void> {
+    const saved = this.getSessionManager?.().listSavedSessions() ?? [];
+    if (saved.length === 0) {
+      vscode.window.showInformationMessage('No saved Claude sessions for this workspace.');
+      return;
+    }
+    const running = runningSessionIds();
+    const picked = await vscode.window.showQuickPick(
+      saved.map(session => ({
+        label: Panel.sessionTitle(session),
+        description: [
+          isRunning(session, running) && 'Running',
+          new Date(session.lastSeen).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
+          session.projectName,
+        ].filter(Boolean).join(' · '),
+        session,
+      })),
+      { canPickMany: true, matchOnDescription: true, title: 'Delete Claude Sessions', placeHolder: 'Select sessions to delete' }
+    );
+    if (picked?.length) { await this.deleteSessions(picked.map(item => item.session)); }
+  }
+
+  private async deleteSessions(targets: SavedSession[]): Promise<void> {
+    const named = (list: SavedSession[]) =>
+      list.length === 1 ? `"${Panel.sessionTitle(list[0])}"` : `${list.length} sessions`;
+
+    const running = runningSessionIds();
+    const detail = 'Moves the transcript and saved data to the Trash. Claude Code won\'t list or resume deleted sessions.'
+      + (targets.some(s => isRunning(s, running))
+        ? '\n\nRunning sessions have their tab closed first, which stops them. One running anywhere else is skipped.'
+        : '');
+    const confirm = 'Move to Trash';
+    const choice = await vscode.window.showWarningMessage(`Delete ${named(targets)}?`, { modal: true, detail }, confirm);
+    if (choice !== confirm) { return; }
+
+    await this.closeSessionTabs(targets);
+    const blocked = await this.waitForExit(targets);
+
+    const deleted: SavedSession[] = [];
+    const failed: string[] = [];
+    for (const session of targets) {
+      if (blocked.includes(session)) { continue; }
+      try {
+        await Panel.trashSession(session);
+        deleted.push(session);
+      } catch (err) {
+        failed.push(`${Panel.sessionTitle(session)}: ${err instanceof Error ? err.message : err}`);
+      }
+    }
+
+    if (deleted.some(s => s.sessionId === this.focusedSessionId)) { this.focusedSessionId = undefined; }
+    if (deleted.length > 0) {
+      vscode.window.showInformationMessage(`Moved ${named(deleted)} to the Trash.`);
+      // The token chart reads the same logs. The session list follows by file watch.
+      this.onRefreshTokenActivityCallback?.();
+    }
+    if (blocked.length > 0) {
+      const one = blocked.length === 1;
+      vscode.window.showWarningMessage(`${named(blocked)} ${one ? 'is' : 'are'} still running, so ${one ? 'it was' : 'they were'} not deleted.`);
+    }
+    if (failed.length > 0) {
+      vscode.window.showErrorMessage(`Could not delete ${failed.join('; ')}`);
+    }
+  }
+
+  private async closeSessionTabs(targets: SavedSession[]): Promise<void> {
+    const ids = new Set(targets.map(s => s.sessionId));
+    // Match against every saved session so a same-titled newer one keeps its tab.
+    const saved = this.getSessionManager?.().listSavedSessions() ?? targets;
+    const tabs = vscode.window.tabGroups.all
+      .flatMap(group => group.tabs)
+      .filter(tab => Panel.isClaudeTab(tab) && ids.has(matchSessionByTabLabel(tab.label, saved) ?? ''));
+    if (tabs.length > 0) { await vscode.window.tabGroups.close(tabs); }
+  }
+
+  // A closed tab's Claude process takes a moment to exit. Deleting sooner would
+  // let its final write bring the log back. Returns the sessions still running.
+  private async waitForExit(targets: SavedSession[]): Promise<SavedSession[]> {
+    const stillRunning = () => {
+      const running = runningSessionIds();
+      return targets.filter(s => isRunning(s, running));
+    };
+    const deadline = Date.now() + Panel.EXIT_WAIT_MS;
+    while (stillRunning().length > 0 && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    return stillRunning();
+  }
+
+  private static async trashSession(session: SavedSession): Promise<void> {
+    const [log, ...rest] = sessionDataPaths(session.filePath);
+    if (!log) { throw new Error('not a session transcript'); }
+    const trash = (p: string) => vscode.workspace.fs.delete(vscode.Uri.file(p), { recursive: true, useTrash: true });
+    await trash(log);
+    // The transcript is the session; a leftover in these only costs disk space.
+    await Promise.allSettled(rest.map(trash));
+  }
+
   private postMessage(msg: ExtensionToWebview): void {
     this.sidebarView?.webview.postMessage(msg);
     this.panel?.webview.postMessage(msg);
@@ -334,6 +447,11 @@ export class Panel implements vscode.WebviewViewProvider {
 
   onReady(callback: () => void): void {
     this.onReadyCallback = callback;
+  }
+
+  // A getter, since the manager is rebuilt whenever the workspace folders change.
+  useSessionManager(get: () => SessionManager): void {
+    this.getSessionManager = get;
   }
 
   sendUsage(usage: UsageStats): void {

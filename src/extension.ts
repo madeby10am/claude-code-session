@@ -19,6 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
     (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.fsPath);
 
   sessionManager = new SessionManager(onSessions, workspaceRoots());
+  panel.useSessionManager(() => sessionManager!);
 
   // Register sidebar webview provider
   context.subscriptions.push(
@@ -31,6 +32,9 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand('claude-code-session.open', () => {
       panel!.openAsPanel();
+    }),
+    vscode.commands.registerCommand('claude-code-session.deleteSessions', () => {
+      void panel!.pickSessionsToDelete();
     })
   );
 

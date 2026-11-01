@@ -37,17 +37,46 @@ import {
   getRecentTokenEvents,
   TokenEvent,
 } from './session/tokenActivity';
+import { isSessionLog, SavedSession } from './session/deleteSession';
 
 // Re-export types so existing imports (panel.ts, extension.ts) keep working.
 export type { ActivityState, SessionState, UsageStats } from './session/types';
 
 const HEAD_BYTES          = 1024;
 const TAIL_BYTES          = 4096;
+const SAVED_TAIL_BYTES    = 64 * 1024;           // wide enough to skip the whole-file title scan on big logs
 const ACTIVE_WINDOW_MS    = 60 * 60 * 1000;      // 1 hr: prune sessions older than this
 const SEED_WINDOW_MS      = 60 * 60 * 1000;      // 1 hr: scan files this old at startup
 const PRUNE_INTERVAL_MS   = 5 * 60 * 1000;       // 5 min
 const SYNC_INTERVAL_MS    = 3 * 1000;            // 3  sec: detect deleted files
 const DEBOUNCE_MS         = 100;
+
+function readLogEnds(filePath: string, size: number, tailBytes: number): { headRaw: string; tailRaw: string } {
+  const fd = fs.openSync(filePath, 'r');
+  let headRaw = '';
+  let tailRaw = '';
+  try {
+    const headLen = Math.min(size, HEAD_BYTES);
+    if (headLen > 0) {
+      const headBuf = Buffer.alloc(headLen);
+      fs.readSync(fd, headBuf, 0, headLen, 0);
+      headRaw = headBuf.toString('utf8');
+    }
+
+    // Tail starts no earlier than where the head ended, so small files
+    // are fully covered instead of losing everything past the head.
+    const tailStart = Math.max(headLen, size - tailBytes);
+    if (size > tailStart) {
+      const tailLen = size - tailStart;
+      const tailBuf = Buffer.alloc(tailLen);
+      fs.readSync(fd, tailBuf, 0, tailLen, tailStart);
+      tailRaw = tailBuf.toString('utf8');
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return { headRaw, tailRaw };
+}
 
 export class SessionManager {
   private readonly sessions: Map<string, SessionState> = new Map();
@@ -118,6 +147,52 @@ export class SessionManager {
         lastSeen: s.lastSeen,
         activity: s.activity,
       }));
+  }
+
+  /** Every session on disk for this window's projects, newest first — not just the recent ones tracked live. */
+  listSavedSessions(): SavedSession[] {
+    let slugs: string[] = [];
+    try {
+      slugs = fs.readdirSync(CLAUDE_PROJECTS_DIR).filter(slug => this.slugMatches(slug));
+    } catch { return []; }
+
+    const saved: SavedSession[] = [];
+    for (const slug of slugs) {
+      const slugDir = path.join(CLAUDE_PROJECTS_DIR, slug);
+      let files: string[] = [];
+      try {
+        files = fs.readdirSync(slugDir);
+      } catch { continue; }
+
+      for (const file of files) {
+        const filePath = path.join(slugDir, file);
+        if (!isSessionLog(filePath)) { continue; }
+        const session = this.readSavedSession(slug, filePath);
+        if (session) { saved.push(session); }
+      }
+    }
+    return saved.sort((a, b) => b.lastSeen - a.lastSeen);
+  }
+
+  getSavedSession(sessionId: string): SavedSession | undefined {
+    const entry = this.entries.get(sessionId);
+    return entry && this.readSavedSession(entry.state.slug, entry.filePath);
+  }
+
+  private readSavedSession(slug: string, filePath: string): SavedSession | undefined {
+    try {
+      const stat = fs.statSync(filePath);
+      const { headRaw, tailRaw } = readLogEnds(filePath, stat.size, SAVED_TAIL_BYTES);
+      const state = defaultSession(path.basename(filePath, '.jsonl'), slug, 0);
+      const entry: SessionEntry = { state, fileOffset: 0, filePath, idleTimer: null, sleepTimer: null };
+      parseLines(headRaw, entry);
+      parseLines(tailRaw, entry);
+      if (!state.chatTitle) { this.scanForTitle(filePath, entry); }
+      if (isBackgroundSession(state)) { return undefined; }
+      const { sessionId, chatTitle, projectName } = state;
+      // parseLines stamps user lines with the current time, so go by the file instead.
+      return { sessionId, chatTitle, projectName, lastSeen: stat.mtimeMs, filePath };
+    } catch { return undefined; }
   }
 
   computeUsageFromLogs(): UsageStats {
@@ -234,30 +309,7 @@ export class SessionManager {
         if (age > SEED_WINDOW_MS) { continue; }
 
         const size = stat.size;
-
-        const fd = fs.openSync(filePath, 'r');
-        let headRaw = '';
-        let tailRaw = '';
-        try {
-          const headLen = Math.min(size, HEAD_BYTES);
-          if (headLen > 0) {
-            const headBuf = Buffer.alloc(headLen);
-            fs.readSync(fd, headBuf, 0, headLen, 0);
-            headRaw = headBuf.toString('utf8');
-          }
-
-          // Tail starts no earlier than where the head ended, so small files
-          // are fully covered instead of losing everything past the head.
-          const tailStart = Math.max(headLen, size - TAIL_BYTES);
-          if (size > tailStart) {
-            const tailLen = size - tailStart;
-            const tailBuf = Buffer.alloc(tailLen);
-            fs.readSync(fd, tailBuf, 0, tailLen, tailStart);
-            tailRaw = tailBuf.toString('utf8');
-          }
-        } finally {
-          fs.closeSync(fd);
-        }
+        const { headRaw, tailRaw } = readLogEnds(filePath, size, TAIL_BYTES);
 
         const sessionId = path.basename(file, '.jsonl');
         const hueShift  = this.nextHue();

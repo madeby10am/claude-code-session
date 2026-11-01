@@ -40,6 +40,10 @@
       {
         "command": "claude-code-session.open",
         "title": "Claude Code Session: Open as Split Panel"
+      },
+      {
+        "command": "claude-code-session.deleteSessions",
+        "title": "Claude Code Session: Delete Sessions…"
       }
     ],
     "keybindings": [
