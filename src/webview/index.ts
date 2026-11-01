@@ -151,7 +151,8 @@ function buildCard(s, focused) {
       <span class="card-mode" title="${modeFull}">${modeShort}</span>
       <span class="card-started">${fmtStarted(s.startedAt)}</span>
     </div>
-    <button class="card-dismiss" title="Remove from list" aria-label="Remove session from list">\u00d7</button>
+    <button class="card-action card-delete" title="Delete session" aria-label="Delete session"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></svg></button>
+    <button class="card-action card-dismiss" title="Remove from list" aria-label="Remove session from list">\u00d7</button>
     <div class="card-context" title="Context window used">
       <div class="context-bar-track">
         <div class="context-bar-fill" data-level="${ctxLevel(pct)}" style="width:${pct}%"></div>
@@ -163,6 +164,10 @@ function buildCard(s, focused) {
   card.querySelector('.card-dismiss').addEventListener('click', e => {
     e.stopPropagation();
     vscodeApi.postMessage({ type: 'dismissSession', sessionId: s.sessionId });
+  });
+  card.querySelector('.card-delete').addEventListener('click', e => {
+    e.stopPropagation();
+    vscodeApi.postMessage({ type: 'deleteSession', sessionId: s.sessionId });
   });
 
   return card;

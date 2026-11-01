@@ -6,15 +6,17 @@ const ELLIPSIS = /…|\.{3}$/;
 
 const norm = (s: string) => s.replace(/^[\s●•*]+/, '').trim().toLowerCase();
 
+type TabCandidate = Pick<SessionState, 'sessionId' | 'chatTitle' | 'lastSeen'>;
+
 export function matchSessionByTabLabel(
   label: string,
-  sessions: Iterable<SessionState>
+  sessions: Iterable<TabCandidate>
 ): string | undefined {
   const want = norm(label);
   if (!want) return undefined;
 
   const list = Array.from(sessions).filter(s => s.chatTitle);
-  const newest = (a: SessionState, b: SessionState) => (b.lastSeen || 0) - (a.lastSeen || 0);
+  const newest = (a: TabCandidate, b: TabCandidate) => (b.lastSeen || 0) - (a.lastSeen || 0);
 
   const exact = list.filter(s => norm(s.chatTitle) === want).sort(newest);
   if (exact.length) return exact[0].sessionId;

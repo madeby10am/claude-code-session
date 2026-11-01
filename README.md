@@ -24,6 +24,7 @@ One compact card per open session, all with the same layout:
 The session whose Claude editor tab is active gets the activity-colored ring. **Click another Claude tab and the sidebar jumps to that session instantly.** Click any card to bring its tab to the front (or reopen/resume it if it's closed).
 
 - **Closing a Claude tab** removes its session from the list. A **×** on hover removes one manually (e.g. terminal sessions). A removed session comes back if it shows new activity.
+- **Delete a session for good:** the trash icon on a card deletes that session, and **Delete sessions…** under the cards (or the command of the same name) picks from everything saved for this workspace, including sessions too old to be listed. The transcript and its saved data go to the system Trash, and Claude Code no longer lists or resumes them. Deleting a running session closes its tab first; one running in a terminal or another window is skipped.
 - Background Agent SDK sessions (e.g. automated reviews) are never listed.
 - A big **+ New session** button sits under the cards.
 

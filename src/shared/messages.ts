@@ -51,4 +51,6 @@ export type WebviewToExtension =
   | { type: 'inputSkill';  name: string }
   | { type: 'openSession'; sessionId: string }
   | { type: 'dismissSession'; sessionId: string }
+  | { type: 'deleteSession'; sessionId: string }
+  | { type: 'pickSessionsToDelete' }
   | { type: 'newSession' };

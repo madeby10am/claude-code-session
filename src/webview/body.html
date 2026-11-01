@@ -44,6 +44,7 @@
       <button class="new-session-btn" title="Start a new Claude session" onclick="vscodeApi.postMessage({type:'newSession'})">
         <span class="new-session-plus" aria-hidden="true">+</span>New session
       </button>
+      <button class="delete-sessions-btn" title="Choose saved sessions to delete, including older ones not listed here" onclick="vscodeApi.postMessage({type:'pickSessionsToDelete'})">Delete sessions&hellip;</button>
     </div>
   </div>
 

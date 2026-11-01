@@ -27,7 +27,7 @@ A VS Code extension ("Claude Code Session") that monitors Claude Code CLI sessio
 
 - **extension.ts** — Entry point. Wires `SessionManager` → `Panel`, registers the `claude-code-session.sidebar` webview view provider and the `claude-code-session.open` command. Passes workspace roots to `SessionManager`.
 - **sessionManager.ts** — File-watches `~/.claude/projects/` for JSONL session logs (filtered to this window's projects). Parses entries to extract session metadata (tokens, activity state, tool usage, model, context %). Emits `Map<string, SessionState>` updates via callback with 100ms debounce. Activity state machine: `idle → user_sent → tooling → responding → idle → sleeping`.
-- **session/** — Parsing and data modules (also `tabMatch.ts`: editor-tab label → session by chat title; `dismissed.ts`: hide closed/dismissed sessions until new activity, and always hide Agent SDK sessions via `isBackgroundSession`; `gitActivity.ts`: reflog → push/pull/merge/commit feed): `jsonlParser.ts` (JSONL → SessionState; one API response spans multiple lines sharing a `message.id` — usage is counted once per id), `tokenActivity.ts` (24h token events for the chart, same dedupe), `usageCompute.ts` (live rate-limit meters via OAuth token from Keychain), `claudeEnvironment.ts` (paths, MCP servers, skills, `encodeProjectPath`), `activityTimers.ts`, `categorize.ts`, `clis.ts`, `types.ts`.
+- **session/** — Parsing and data modules (also `tabMatch.ts`: editor-tab label → session by chat title; `dismissed.ts`: hide closed/dismissed sessions until new activity, and always hide Agent SDK sessions via `isBackgroundSession`; `deleteSession.ts`: what one session owns on disk, and which sessions are still running; `gitActivity.ts`: reflog → push/pull/merge/commit feed): `jsonlParser.ts` (JSONL → SessionState; one API response spans multiple lines sharing a `message.id` — usage is counted once per id), `tokenActivity.ts` (24h token events for the chart, same dedupe), `usageCompute.ts` (live rate-limit meters via OAuth token from Keychain), `claudeEnvironment.ts` (paths, MCP servers, skills, `encodeProjectPath`), `activityTimers.ts`, `categorize.ts`, `clis.ts`, `types.ts`.
 - **panel.ts** — `WebviewViewProvider`. Builds the webview HTML shell, handles webview messages, tab→session sync (`syncActiveTab`, `onTabsClosed`), session focus, and project info. Git status follows the focused session's repo (`repoRoot` of its `cwd`); the activity feed spans every session's repo. Branch-name-bearing git calls use `execFileSync` (no shell) because branch names are attacker-controlled; `gh repo view` is cached 5 min.
 - **webview/index.ts** — All webview-side JS (session cards, robot sprite animation, usage meters, token chart). Bundled by esbuild to `out/webview/bundle.js`.
 
@@ -43,6 +43,8 @@ Webview → Extension (via `vscodeApi.postMessage`):
 - `{ type: 'ready' }`, `{ type: 'refreshUsage' }`, `{ type: 'refreshTokenActivity' }`
 - `{ type: 'openSession', sessionId }` — bring the session forward (see below)
 - `{ type: 'dismissSession', sessionId }` — hide it until new activity (also fired automatically when its tab closes)
+- `{ type: 'deleteSession', sessionId }` — delete one session (see below); the id is resolved through `SessionManager`, never turned into a path
+- `{ type: 'pickSessionsToDelete' }` — quick pick over every saved session for this window, including those past the 1 hr live window
 - `{ type: 'newSession' }`, `openUrl`, `openFile`, `openFolder`, `inputSkill`
 
 ### Session focus strategy (`focusSession`)
@@ -51,6 +53,10 @@ Webview → Extension (via `vscodeApi.postMessage`):
 2. An open Claude editor tab (`claudeVSCodePanel` webview) whose label matches the session's chat title → focus its group, then `workbench.action.openEditorAtIndex`
 3. A terminal whose name includes the sessionId prefix
 4. `claude-vscode.primaryEditor.open(sessionId)` for VS Code-entrypoint sessions; otherwise a new terminal **in the session's own cwd** running `claude --resume <id>`
+
+### Session deletion (`deleteSessions`)
+
+Archiving in the official extension only hides an id (`hiddenSessionIds` in its `globalState`); its history comes from reading `.jsonl` files, so removing the file is what deletes a session. After a modal confirm, `panel.ts` closes the session's Claude tabs, waits up to 3s for its process to exit (`~/.claude/sessions/<pid>.json` plus a pid check, since crashed processes leave those files behind), then trashes the paths from `sessionDataPaths`. A session still running after that is skipped: its next write would recreate the log. `isSessionLog` is the guard on what can be deleted; keep every delete going through it.
 
 ## Pushing to GitHub
 
